@@ -23,6 +23,7 @@
 #include <QList>
 #include <QStringList>
 #include "../graph/querydistance.h"
+#include "../graph/path.h"
 
 class Memory
 {
@@ -36,6 +37,7 @@ public:
 
     bool pathDialogIsVisible;
     bool queryPathDialogIsVisible;
+    bool gafPathDialogIsVisible;
 
     //These store the user input in the 'Specify exact path...' dialog so it is
     //retained between uses.

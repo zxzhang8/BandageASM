@@ -33,6 +33,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <QScrollBar>
+#include <QFileInfo>
 #include "settingsdialog.h"
 #include <stdlib.h>
 #include <time.h>
@@ -61,6 +62,8 @@
 #include "../graph/path.h"
 #include "pathspecifydialog.h"
 #include "../program/memory.h"
+#include "gafpathsdialog.h"
+#include "../program/gafparser.h"
 #include "changenodenamedialog.h"
 #include "changenodedepthdialog.h"
 #include <limits>
@@ -70,9 +73,15 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     QMainWindow(0),
     ui(new Ui::MainWindow), m_layoutThread(0), m_imageFilter("PNG (*.png)"),
     m_fileToLoadOnStartup(fileToLoadOnStartup), m_drawGraphAfterLoad(drawGraphAfterLoad),
-    m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_alreadyShown(false)
+    m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafTabIndex(-1), m_gafPathsWidget(0), m_alreadyShown(false)
 {
     ui->setupUi(this);
+
+    // Wrap the original central widget into a tab widget so we can add a GAF tab.
+    QWidget * oldCentral = takeCentralWidget();
+    m_tabWidget = new QTabWidget(this);
+    m_tabWidget->addTab(oldCentral, "Graph & controls");
+    setCentralWidget(m_tabWidget);
 
     QApplication::setWindowIcon(QIcon(QPixmap(":/icons/icon.png")));
     ui->graphicsViewWidget->layout()->addWidget(g_graphicsView);
@@ -151,6 +160,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->textOutlineCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->fontButton, SIGNAL(clicked()), this, SLOT(fontButtonPressed()));
     connect(ui->setNodeCustomColourButton, SIGNAL(clicked()), this, SLOT(setNodeCustomColour()));
+    connect(ui->addNodeCustomColourButton, SIGNAL(clicked()), this, SLOT(addNodeCustomColour()));
     connect(ui->setNodeCustomLabelButton, SIGNAL(clicked()), this, SLOT(setNodeCustomLabel()));
     connect(ui->actionSettings, SIGNAL(triggered()), this, SLOT(openSettingsDialog()));
     connect(ui->selectNodesButton, SIGNAL(clicked()), this, SLOT(selectUserSpecifiedNodes()));
@@ -158,6 +168,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->actionAbout, SIGNAL(triggered()), this, SLOT(openAboutDialog()));
     connect(ui->blastSearchButton, SIGNAL(clicked()), this, SLOT(openBlastSearchDialog()));
     connect(ui->blastQueryComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(blastQueryChanged()));
+    connect(ui->gafLoadButton, SIGNAL(clicked()), this, SLOT(openGafPathsDialog()));
     connect(ui->actionControls_panel, SIGNAL(toggled(bool)), this, SLOT(showHidePanels()));
     connect(ui->actionSelection_panel, SIGNAL(toggled(bool)), this, SLOT(showHidePanels()));
     connect(ui->contiguityButton, SIGNAL(clicked()), this, SLOT(determineContiguityFromSelectedNode()));
@@ -243,6 +254,16 @@ void MainWindow::cleanUp()
 {
     ui->blastQueryComboBox->clear();
     ui->blastQueryComboBox->addItem("none");
+    ui->gafFileLabel->setText("Not loaded");
+
+    if (m_gafTabIndex != -1 && m_tabWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
+        m_tabWidget->removeTab(m_gafTabIndex);
+        delete tab;
+        m_gafTabIndex = -1;
+        m_gafPathsWidget = 0;
+    }
 
     g_blastSearch->cleanUp();
     g_assemblyGraph->cleanUp();
@@ -256,6 +277,15 @@ void MainWindow::cleanUp()
     {
         delete m_blastSearchDialog;
         m_blastSearchDialog = 0;
+    }
+
+    if (m_gafTabIndex != -1 && m_tabWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
+        m_tabWidget->removeTab(m_gafTabIndex);
+        delete tab;
+        m_gafTabIndex = -1;
+        m_gafPathsWidget = 0;
     }
 
     ui->csvComboBox->clear();
@@ -316,6 +346,68 @@ void MainWindow::loadCSV(QString fullFileName)
 }
 
 
+void MainWindow::openGafPathsDialog()
+{
+    if (g_assemblyGraph->m_deBruijnGraphNodes.size() == 0)
+    {
+        QMessageBox::information(this, "No graph loaded", "Load a graph (e.g. GFA/FASTG) before importing a GAF path file.");
+        return;
+    }
+
+    QString selectedFilter = "GAF (*.gaf);;All files (*)";
+    QString fileName = QFileDialog::getOpenFileName(this, "Load GAF paths", g_memory->rememberedPath,
+                                                    "GAF (*.gaf);;All files (*)",
+                                                    &selectedFilter);
+
+    if (fileName == "")
+        return;
+
+    g_memory->rememberedPath = QFileInfo(fileName).absolutePath();
+
+    GafParseResult parseResult = parseGafFile(fileName);
+    if (parseResult.alignments.isEmpty())
+    {
+        QString warning = "No valid paths were found.";
+        if (!parseResult.warnings.isEmpty())
+            warning += "\n\n" + parseResult.warnings.join("\n");
+        QMessageBox::warning(this, "GAF empty or invalid", warning);
+        return;
+    }
+
+    if (m_gafTabIndex != -1 && m_gafPathsWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
+        m_tabWidget->removeTab(m_gafTabIndex);
+        delete tab;
+        m_gafPathsWidget = 0;
+        m_gafTabIndex = -1;
+    }
+
+    QString shortName = QFileInfo(fileName).fileName();
+    ui->gafFileLabel->setText(shortName + " (" + QString::number(parseResult.alignments.size()) + " paths)");
+
+    m_gafPathsWidget = new GafPathsDialog(m_tabWidget, shortName, parseResult);
+    m_gafTabIndex = m_tabWidget->addTab(m_gafPathsWidget, "GAF paths");
+
+    connect(m_gafPathsWidget, SIGNAL(selectionChanged()), g_graphicsView->viewport(), SLOT(update()));
+    connect(m_gafPathsWidget, SIGNAL(selectionChanged()), this, SLOT(selectionChanged()));
+    connect(m_gafPathsWidget, SIGNAL(highlightRequested()), this, SLOT(focusOnGafSelection()));
+
+    m_tabWidget->setCurrentIndex(m_gafTabIndex);
+}
+
+
+void MainWindow::focusOnGafSelection()
+{
+    //Switch back to the main graph tab.
+    if (m_tabWidget != 0 && m_tabWidget->count() > 0)
+        m_tabWidget->setCurrentIndex(0);
+
+    //Zoom to the currently selected nodes/edges.
+    zoomToSelection();
+}
+
+
 void MainWindow::loadGraph(QString fullFileName)
 {
     QString selectedFilter = "Any supported graph (*)";
@@ -326,6 +418,19 @@ void MainWindow::loadGraph(QString fullFileName)
 
     if (fullFileName != "") //User did not hit cancel
     {
+        // Reset any loaded GAF paths because a new graph is being loaded.
+        if (m_gafTabIndex != -1 && m_tabWidget != 0)
+        {
+            QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
+            m_tabWidget->removeTab(m_gafTabIndex);
+            delete tab;
+            m_gafTabIndex = -1;
+            m_gafPathsWidget = 0;
+        }
+        g_memory->gafPathDialogIsVisible = false;
+        g_memory->queryPaths.clear();
+        ui->gafFileLabel->setText("Not loaded");
+
         GraphFileType detectedFileType = g_assemblyGraph->getGraphFileTypeFromFile(fullFileName);
 
         GraphFileType selectedFileType = ANY_FILE_TYPE;
@@ -1359,6 +1464,47 @@ void MainWindow::setNodeCustomColour()
     }
 }
 
+
+void MainWindow::addNodeCustomColour()
+{
+    std::vector<DeBruijnNode *> selectedNodes = m_scene->getSelectedNodes();
+    if (selectedNodes.size() == 0)
+        return;
+
+    QString dialogTitle = "Add colour to selected node";
+    if (selectedNodes.size() > 1)
+        dialogTitle += "s";
+
+    QColor addColour = QColorDialog::getColor(selectedNodes[0]->getCustomColourForDisplay(), this, dialogTitle);
+    if (!addColour.isValid())
+        return;
+
+    //If we are in single mode, apply the custom colour to both nodes in each complementary pair.
+    if (!g_settings->doubleMode)
+        selectedNodes = addComplementaryNodes(selectedNodes);
+
+    //If the colouring scheme is not currently custom, change it to custom now
+    if (g_settings->nodeColourScheme != CUSTOM_COLOURS)
+        setNodeColourSchemeComboBox(CUSTOM_COLOURS);
+
+    auto mixChannel = [](int a, int b) { return (a + b) / 2; };
+
+    for (size_t i = 0; i < selectedNodes.size(); ++i)
+    {
+        QColor base = selectedNodes[i]->getCustomColourForDisplay();
+        QColor combined(mixChannel(base.red(), addColour.red()),
+                        mixChannel(base.green(), addColour.green()),
+                        mixChannel(base.blue(), addColour.blue()),
+                        mixChannel(base.alpha(), addColour.alpha()));
+
+        selectedNodes[i]->setCustomColour(combined);
+        if (selectedNodes[i]->getGraphicsItemNode() != 0)
+            selectedNodes[i]->getGraphicsItemNode()->setNodeColour();
+    }
+
+    g_graphicsView->viewport()->update();
+}
+
 void MainWindow::setNodeCustomLabel()
 {
     std::vector<DeBruijnNode *> selectedNodes = m_scene->getSelectedNodes();
@@ -1741,14 +1887,17 @@ void MainWindow::setInfoTexts()
     ui->blastQueryInfoText->setInfoText("After a BLAST search is completed, you can select a query here for use "
                                         "with the 'Around BLAST hits' graph scope and the 'BLAST "
                                         "hits' colour modes.");
+    ui->gafInfoText->setInfoText("Import a GAF file (graph alignments) to list all paths. "
+                                 "Select path(s) and click 'Highlight selected paths' to select and display the path on the graph.");
     ui->selectionSearchInfoText->setInfoText("Type a comma-delimited list of one or mode node numbers and then click "
                                              "the 'Find node(s)' button to search for nodes in the graph. "
                                              "If the search is successful, the view will zoom to the found nodes "
                                              "and they will be selected.");
     ui->setColourAndLabelInfoText->setInfoText("Custom colours and labels can be applied to selected nodes using "
-                                               "these buttons. They will only be visible when the colouring "
-                                               "mode is set to 'Custom colours' and the 'Custom' label option "
-                                               "is ticked.");
+                                               "these buttons. 'Set colour' replaces the node colour; 'Add colour' "
+                                               "adds the chosen RGB value to each node's current colour (per-node). "
+                                               "They will only be visible when the colouring mode is set to 'Custom "
+                                               "colours' and the 'Custom' label option is ticked.");
     ui->minDepthInfoText->setInfoText("This is the lower bound for the depth range. Nodes with a read "
                                           "depth less than this value will not be drawn.");
     ui->maxDepthInfoText->setInfoText("This is the uper bound for the depth range. Nodes with a read "
@@ -1769,6 +1918,7 @@ void MainWindow::setUiState(UiState uiState)
         ui->graphDisplayWidget->setEnabled(false);
         ui->nodeLabelsWidget->setEnabled(false);
         ui->blastSearchWidget->setEnabled(false);
+        ui->gafWidget->setEnabled(false);
         ui->selectionScrollAreaWidgetContents->setEnabled(false);
         ui->actionLoad_CSV->setEnabled(false);
         break;
@@ -1778,6 +1928,7 @@ void MainWindow::setUiState(UiState uiState)
         ui->graphDisplayWidget->setEnabled(false);
         ui->nodeLabelsWidget->setEnabled(false);
         ui->blastSearchWidget->setEnabled(true);
+        ui->gafWidget->setEnabled(true);
         ui->selectionScrollAreaWidgetContents->setEnabled(false);
         ui->actionLoad_CSV->setEnabled(true);
         break;
@@ -1787,6 +1938,7 @@ void MainWindow::setUiState(UiState uiState)
         ui->graphDisplayWidget->setEnabled(true);
         ui->nodeLabelsWidget->setEnabled(true);
         ui->blastSearchWidget->setEnabled(true);
+        ui->gafWidget->setEnabled(true);
         ui->selectionScrollAreaWidgetContents->setEnabled(true);
         ui->actionZoom_to_selection->setEnabled(true);
         ui->actionLoad_CSV->setEnabled(true);

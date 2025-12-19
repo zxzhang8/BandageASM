@@ -202,7 +202,7 @@ void GraphicsItemNode::paint(QPainter * painter, const QStyleOptionGraphicsItem 
 
 
     //Draw the query path, if appropriate
-    if (g_memory->queryPathDialogIsVisible)
+    if (g_memory->queryPathDialogIsVisible || g_memory->gafPathDialogIsVisible)
         queryPathHighlightNode(painter);
 
 

@@ -29,12 +29,15 @@
 #include "../program/globals.h"
 #include <QThread>
 #include "../ogdf/energybased/FMMMLayout.h"
+#include <QTabWidget>
 
 class GraphicsViewZoom;
 class MyGraphicsScene;
 class DeBruijnNode;
 class DeBruijnEdge;
 class BlastSearchDialog;
+class GafPathsDialog;
+class QDockWidget;
 
 namespace Ui {
 class MainWindow;
@@ -61,6 +64,9 @@ private:
     bool m_drawGraphAfterLoad;
     UiState m_uiState;
     BlastSearchDialog * m_blastSearchDialog;
+    QTabWidget * m_tabWidget;
+    int m_gafTabIndex;
+    GafPathsDialog * m_gafPathsWidget;
     bool m_alreadyShown;
 
     void cleanUp();
@@ -119,6 +125,7 @@ private slots:
     void setTextDisplaySettings();
     void fontButtonPressed();
     void setNodeCustomColour();
+    void addNodeCustomColour();
     void setNodeCustomLabel();
     void hideNodes();
     void openSettingsDialog();
@@ -146,6 +153,8 @@ private slots:
     void afterMainWindowShow();
     void startingNodesExactMatchChanged();
     void openPathSpecifyDialog();
+    void openGafPathsDialog();
+    void focusOnGafSelection();
     void nodeWidthChanged();
     void saveEntireGraphToFasta();
     void saveEntireGraphToFastaOnlyPositiveNodes();

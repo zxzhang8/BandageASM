@@ -80,6 +80,8 @@ SOURCES += \
     command_line/querypaths.cpp \
     command_line/info.cpp \
     command_line/reduce.cpp \
+    program/gafparser.cpp \
+    ui/gafpathsdialog.cpp \
     ogdf/basic/Graph.cpp \
     ogdf/basic/GraphAttributes.cpp \
     ogdf/energybased/FMMMLayout.cpp \
@@ -172,6 +174,8 @@ HEADERS  += \
     command_line/querypaths.h \
     command_line/info.h \
     command_line/reduce.h \
+    program/gafparser.h \
+    ui/gafpathsdialog.h \
     ogdf/basic/Graph.h \
     ogdf/basic/GraphAttributes.h \
     ogdf/energybased/FMMMLayout.h \
