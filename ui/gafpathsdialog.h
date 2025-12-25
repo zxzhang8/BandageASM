@@ -27,6 +27,7 @@ class QLabel;
 class QPushButton;
 class QSpinBox;
 class QLineEdit;
+class QComboBox;
 class QModelIndex;
 
 class GafPathsTable : public QTableWidget
@@ -66,10 +67,12 @@ private:
     QPushButton * m_resetFilterButton;
     QSpinBox * m_mapqFilterSpinBox;
     QLineEdit * m_nodeFilterLineEdit;
+    QComboBox * m_nodeFilterModeComboBox;
     QLabel * m_warningLabel;
     QList<int> m_visibleRows;
     int m_currentMapqThreshold;
-    QString m_nodeFilter;
+    QStringList m_nodeFilters;
+    bool m_nodeFilterMatchAll;
 
     void populateTable();
     void applyMapqFilter();

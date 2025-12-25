@@ -20,6 +20,8 @@
 #include <QAbstractItemView>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QComboBox>
+#include <QRegularExpression>
 #include <QHideEvent>
 #include <QLabel>
 #include <QMessageBox>
@@ -77,6 +79,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_resetFilterButton(new QPushButton("Reset", this)),
     m_mapqFilterSpinBox(new QSpinBox(this)),
     m_nodeFilterLineEdit(new QLineEdit(this)),
+    m_nodeFilterModeComboBox(new QComboBox(this)),
     m_warningLabel(new QLabel(this))
 {
     setWindowTitle("GAF Paths");
@@ -104,8 +107,12 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_mapqFilterSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
     m_mapqFilterSpinBox->setFixedWidth(120);
 
-    m_nodeFilterLineEdit->setPlaceholderText("Node name");
-    m_nodeFilterLineEdit->setFixedWidth(140);
+    m_nodeFilterLineEdit->setPlaceholderText("Node name(s)");
+    m_nodeFilterLineEdit->setFixedWidth(200);
+
+    m_nodeFilterModeComboBox->addItem("Any");
+    m_nodeFilterModeComboBox->addItem("All");
+    m_nodeFilterModeComboBox->setFixedWidth(70);
 
     QHBoxLayout * buttonLayout = new QHBoxLayout();
     buttonLayout->addWidget(m_highlightButton);
@@ -113,6 +120,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     buttonLayout->addStretch();
     buttonLayout->addWidget(new QLabel("Path includes:", this));
     buttonLayout->addWidget(m_nodeFilterLineEdit);
+    buttonLayout->addWidget(m_nodeFilterModeComboBox);
     buttonLayout->addWidget(m_mapqFilterSpinBox);
     buttonLayout->addWidget(m_filterButton);
     buttonLayout->addWidget(m_resetFilterButton);
@@ -126,7 +134,8 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     for (int i = 0; i < m_alignments.size(); ++i)
         m_visibleRows << i;
     m_currentMapqThreshold = 0;
-    m_nodeFilter.clear();
+    m_nodeFilters.clear();
+    m_nodeFilterMatchAll = false;
 
     populateTable();
     showWarnings();
@@ -240,7 +249,7 @@ void GafPathsDialog::updateButtons()
     m_filterButton->setEnabled(true);
     m_resetFilterButton->setEnabled(m_visibleRows.size() != m_alignments.size() ||
                                     m_currentMapqThreshold != 0 ||
-                                    !m_nodeFilter.isEmpty());
+                                    !m_nodeFilters.isEmpty());
 }
 
 
@@ -346,7 +355,9 @@ void GafPathsDialog::highlightPathsForRows(const QList<int> &rows)
 void GafPathsDialog::filterByMapq()
 {
     m_currentMapqThreshold = m_mapqFilterSpinBox->value();
-    m_nodeFilter = m_nodeFilterLineEdit->text().trimmed();
+    QString rawFilter = m_nodeFilterLineEdit->text().trimmed();
+    m_nodeFilters = rawFilter.split(QRegularExpression("[,\\s]+"), Qt::SkipEmptyParts);
+    m_nodeFilterMatchAll = (m_nodeFilterModeComboBox->currentIndex() == 1);
     applyMapqFilter();
 }
 
@@ -368,7 +379,7 @@ void GafPathsDialog::applyMapqFilter()
         if (!mapqPass)
             continue;
 
-        if (m_nodeFilter.isEmpty())
+        if (m_nodeFilters.isEmpty())
         {
             m_visibleRows << i;
             continue;
@@ -376,26 +387,46 @@ void GafPathsDialog::applyMapqFilter()
 
         const QList<DeBruijnNode *> nodes = m_alignments[i].path.getNodes();
         bool matched = false;
-        bool filterHasSign = m_nodeFilter.endsWith('+') || m_nodeFilter.endsWith('-');
-        for (int n = 0; n < nodes.size(); ++n)
+        bool allMatched = true;
+        for (int f = 0; f < m_nodeFilters.size(); ++f)
         {
-            const QString nodeName = nodes[n]->getName();
-            if (filterHasSign)
+            const QString filter = m_nodeFilters[f];
+            bool filterHasSign = filter.endsWith('+') || filter.endsWith('-');
+            bool filterMatched = false;
+            for (int n = 0; n < nodes.size(); ++n)
             {
-                if (nodeName == m_nodeFilter)
+                const QString nodeName = nodes[n]->getName();
+                if (filterHasSign)
                 {
-                    matched = true;
+                    if (nodeName == filter)
+                    {
+                        filterMatched = true;
+                        break;
+                    }
+                }
+                else if (nodes[n]->getNameWithoutSign() == filter)
+                {
+                    filterMatched = true;
                     break;
                 }
             }
-            else if (nodes[n]->getNameWithoutSign() == m_nodeFilter)
+
+            if (m_nodeFilterMatchAll)
+            {
+                if (!filterMatched)
+                {
+                    allMatched = false;
+                    break;
+                }
+            }
+            else if (filterMatched)
             {
                 matched = true;
                 break;
             }
         }
 
-        if (matched)
+        if ((m_nodeFilterMatchAll && allMatched) || (!m_nodeFilterMatchAll && matched))
             m_visibleRows << i;
     }
 
@@ -412,8 +443,9 @@ void GafPathsDialog::resetFilter()
         m_visibleRows << i;
     m_currentMapqThreshold = 0;
     m_mapqFilterSpinBox->setValue(0);
-    m_nodeFilter.clear();
+    m_nodeFilters.clear();
     m_nodeFilterLineEdit->setText("");
+    m_nodeFilterModeComboBox->setCurrentIndex(0);
     populateTable();
     showWarnings();
     updateButtons();
