@@ -220,6 +220,8 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->actionChange_node_depth, SIGNAL(triggered(bool)), this, SLOT(changeNodeDepth()));
     connect(ui->moreInfoButton, SIGNAL(clicked(bool)), this, SLOT(openGraphInfoDialog()));
     connect(g_graphicsView, SIGNAL(showNodeSequence(DeBruijnNode *)), this, SLOT(showNodeSequenceTab(DeBruijnNode *)));
+    connect(g_graphicsView, SIGNAL(setNodeAsPathStart(DeBruijnNode *)), this, SLOT(setPathStartFromNode(DeBruijnNode *)));
+    connect(g_graphicsView, SIGNAL(setNodeAsPathEnd(DeBruijnNode *)), this, SLOT(setPathEndFromNode(DeBruijnNode *)));
 
     connect(this, SIGNAL(windowLoaded()), this, SLOT(afterMainWindowShow()), Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection));
 }
@@ -770,6 +772,20 @@ void MainWindow::showNodeSequenceTab(DeBruijnNode * node)
     m_tabWidget->setCurrentIndex(m_nodeSequenceTabIndex);
 }
 
+void MainWindow::setPathStartFromNode(DeBruijnNode * node)
+{
+    if (node == 0)
+        return;
+    ui->selectedNodesPathStartComboBox->setCurrentText(node->getNameWithoutSign());
+}
+
+void MainWindow::setPathEndFromNode(DeBruijnNode * node)
+{
+    if (node == 0)
+        return;
+    ui->selectedNodesPathEndComboBox->setCurrentText(node->getNameWithoutSign());
+}
+
 void MainWindow::findPathsInSelectedNodes()
 {
     std::vector<DeBruijnNode *> selectedNodes = m_scene->getSelectedNodes();
@@ -1090,12 +1106,6 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     else if (baseNames.size() > 1)
         ui->selectedNodesPathEndComboBox->setCurrentIndex(1);
 
-    QCompleter * startCompleter = ui->selectedNodesPathStartComboBox->completer();
-    if (startCompleter != 0)
-        startCompleter->setCaseSensitivity(Qt::CaseInsensitive);
-    QCompleter * endCompleter = ui->selectedNodesPathEndComboBox->completer();
-    if (endCompleter != 0)
-        endCompleter->setCaseSensitivity(Qt::CaseInsensitive);
 }
 
 QList<Path> MainWindow::findPathsWithinSelection(DeBruijnNode * startNode,

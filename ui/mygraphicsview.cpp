@@ -110,10 +110,16 @@ void MyGraphicsView::contextMenuEvent(QContextMenuEvent * event)
         QMenu menu(this);
         QAction * titleAction = menu.addAction(graphicsItemNode->m_deBruijnNode->getName());
         titleAction->setEnabled(false);
+        QAction * startAction = menu.addAction("Set start");
+        QAction * endAction = menu.addAction("Set end");
         menu.addSeparator();
         QAction * showSequenceAction = menu.addAction("Show node sequence");
         QAction * selectedAction = menu.exec(event->globalPos());
-        if (selectedAction == showSequenceAction)
+        if (selectedAction == startAction)
+            emit setNodeAsPathStart(graphicsItemNode->m_deBruijnNode);
+        else if (selectedAction == endAction)
+            emit setNodeAsPathEnd(graphicsItemNode->m_deBruijnNode);
+        else if (selectedAction == showSequenceAction)
             emit showNodeSequence(graphicsItemNode->m_deBruijnNode);
         event->accept();
         return;

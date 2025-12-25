@@ -74,6 +74,8 @@ signals:
     void copySelectedSequencesToClipboard();
     void saveSelectedSequencesToFile();
     void showNodeSequence(DeBruijnNode * node);
+    void setNodeAsPathStart(DeBruijnNode * node);
+    void setNodeAsPathEnd(DeBruijnNode * node);
 };
 
 #endif // MYGRAPHICSVIEW_H

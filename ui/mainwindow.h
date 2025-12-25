@@ -196,6 +196,8 @@ private slots:
     void changeNodeDepth();
     void openGraphInfoDialog();
     void showNodeSequenceTab(DeBruijnNode * node);
+    void setPathStartFromNode(DeBruijnNode * node);
+    void setPathEndFromNode(DeBruijnNode * node);
 
 protected:
       void showEvent(QShowEvent *ev);

@@ -17,14 +17,19 @@
 
 #include "selectednodespathswidget.h"
 
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTableWidget>
+#include <QTextStream>
 #include <QVBoxLayout>
 #include "mygraphicsview.h"
+#include "../graph/assemblygraph.h"
 #include "../graph/debruijnnode.h"
 #include "../graph/graphicsitemnode.h"
 #include "../program/globals.h"
@@ -36,7 +41,8 @@ SelectedNodesPathsWidget::SelectedNodesPathsWidget(QWidget * parent, const QList
     m_infoLabel(new QLabel(this)),
     m_table(new QTableWidget(this)),
     m_highlightButton(new QPushButton("Highlight selected paths", this)),
-    m_highlightAllButton(new QPushButton("Highlight all paths", this))
+    m_highlightAllButton(new QPushButton("Highlight all paths", this)),
+    m_exportFastaButton(new QPushButton("Export FASTA", this))
 {
     QVBoxLayout * layout = new QVBoxLayout(this);
 
@@ -58,6 +64,7 @@ SelectedNodesPathsWidget::SelectedNodesPathsWidget(QWidget * parent, const QList
     QHBoxLayout * buttonLayout = new QHBoxLayout();
     buttonLayout->addWidget(m_highlightButton);
     buttonLayout->addWidget(m_highlightAllButton);
+    buttonLayout->addWidget(m_exportFastaButton);
     buttonLayout->addStretch();
     layout->addLayout(buttonLayout);
 
@@ -67,6 +74,7 @@ SelectedNodesPathsWidget::SelectedNodesPathsWidget(QWidget * parent, const QList
     connect(m_table, SIGNAL(itemSelectionChanged()), this, SLOT(onSelectionChanged()));
     connect(m_highlightButton, SIGNAL(clicked()), this, SLOT(highlightSelectedPaths()));
     connect(m_highlightAllButton, SIGNAL(clicked()), this, SLOT(highlightAllPaths()));
+    connect(m_exportFastaButton, SIGNAL(clicked()), this, SLOT(exportSelectedPathSequence()));
 }
 
 
@@ -134,6 +142,8 @@ void SelectedNodesPathsWidget::updateButtons()
 {
     m_highlightButton->setEnabled(!m_table->selectedItems().isEmpty());
     m_highlightAllButton->setEnabled(!m_paths.isEmpty());
+    m_exportFastaButton->setEnabled(m_table->selectionModel() != 0 &&
+                                   m_table->selectionModel()->selectedRows().size() == 1);
 }
 
 
@@ -180,6 +190,50 @@ void SelectedNodesPathsWidget::highlightAllPaths()
         allRows << i;
 
     highlightPathsForRows(allRows);
+}
+
+
+void SelectedNodesPathsWidget::exportSelectedPathSequence()
+{
+    if (m_table->selectionModel() == 0)
+        return;
+
+    QModelIndexList selectedRows = m_table->selectionModel()->selectedRows();
+    if (selectedRows.size() != 1)
+    {
+        QMessageBox::information(this, "Select one path", "Select a single path to export its sequence.");
+        return;
+    }
+
+    exportPathSequence(selectedRows[0].row());
+}
+
+
+void SelectedNodesPathsWidget::exportPathSequence(int row)
+{
+    if (row < 0 || row >= m_paths.size())
+        return;
+
+    QString defaultFileNameAndPath = g_memory->rememberedPath + "/selected_node_path.fa";
+    QString fileName = QFileDialog::getSaveFileName(this, "Export FASTA", defaultFileNameAndPath,
+                                                    "FASTA (*.fa *.fasta);;All files (*)");
+    if (fileName == "")
+        return;
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(this, "Export FASTA", "Could not open file for writing:\n" + fileName);
+        return;
+    }
+
+    const Path &path = m_paths[row];
+    QByteArray sequence = path.getPathSequence();
+    QTextStream out(&file);
+    out << ">selected_node_path\n";
+    out << AssemblyGraph::addNewlinesToSequence(sequence);
+
+    g_memory->rememberedPath = QFileInfo(fileName).absolutePath();
 }
 
 

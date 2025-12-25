@@ -40,15 +40,18 @@ private:
     QTableWidget * m_table;
     QPushButton * m_highlightButton;
     QPushButton * m_highlightAllButton;
+    QPushButton * m_exportFastaButton;
 
     void populateTable();
     void updateButtons();
     void highlightPathsForRows(const QList<int> &rows);
+    void exportPathSequence(int row);
 
 private slots:
     void onSelectionChanged();
     void highlightSelectedPaths();
     void highlightAllPaths();
+    void exportSelectedPathSequence();
 
 signals:
     void selectionChanged();
