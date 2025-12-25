@@ -18,8 +18,9 @@
 #ifndef GAFPATHSDIALOG_H
 #define GAFPATHSDIALOG_H
 
+#include <QAbstractTableModel>
 #include <QList>
-#include <QTableWidget>
+#include <QTableView>
 #include <QWidget>
 #include "../program/gafparser.h"
 
@@ -28,14 +29,15 @@ class QPushButton;
 class QSpinBox;
 class QLineEdit;
 class QComboBox;
+class QLabel;
 class QModelIndex;
 
-class GafPathsTable : public QTableWidget
+class GafPathsTableView : public QTableView
 {
     Q_OBJECT
 
 public:
-    explicit GafPathsTable(QWidget *parent = 0);
+    explicit GafPathsTableView(QWidget *parent = 0);
     void setPathColumn(int col);
 
 protected:
@@ -44,6 +46,37 @@ protected:
 
 private:
     int m_pathColumn;
+};
+
+class GafPathsModel : public QAbstractTableModel
+{
+    Q_OBJECT
+
+public:
+    explicit GafPathsModel(const QList<GafAlignment> * alignments, QObject * parent = 0);
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    int columnCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QVariant headerData(int section, Qt::Orientation orientation,
+                        int role = Qt::DisplayRole) const override;
+
+    void setVisibleRows(const QList<int> &rows);
+    void setPageSize(int size);
+    void setCurrentPage(int page);
+    int currentPage() const {return m_currentPage;}
+    int pageCount() const;
+    int totalRows() const {return m_visibleRows.size();}
+    int alignmentIndexForRow(int row) const;
+    QList<int> visibleRows() const {return m_visibleRows;}
+
+private:
+    const QList<GafAlignment> * m_alignments;
+    QList<int> m_visibleRows;
+    QList<int> m_pageRows;
+    int m_pageSize;
+    int m_currentPage;
+
+    void rebuildPageRows();
 };
 
 class GafPathsDialog : public QWidget
@@ -60,15 +93,20 @@ private:
     QString m_fileName;
     QList<GafAlignment> m_alignments;
     QStringList m_warnings;
-    QTableWidget * m_table;
+    GafPathsModel * m_model;
+    GafPathsTableView * m_table;
     QPushButton * m_highlightButton;
     QPushButton * m_highlightAllButton;
     QPushButton * m_filterButton;
     QPushButton * m_resetFilterButton;
+    QPushButton * m_prevPageButton;
+    QPushButton * m_nextPageButton;
     QSpinBox * m_mapqFilterSpinBox;
     QLineEdit * m_nodeFilterLineEdit;
     QComboBox * m_nodeFilterModeComboBox;
+    QSpinBox * m_pageSizeSpinBox;
     QLabel * m_warningLabel;
+    QLabel * m_pageLabel;
     QList<int> m_visibleRows;
     int m_currentMapqThreshold;
     QStringList m_nodeFilters;
@@ -78,9 +116,9 @@ private:
     void applyMapqFilter();
     void resetFilter();
     void updateButtons();
+    void updatePaginationControls();
     void showWarnings();
-    void highlightPathsForRows(const QList<int> &rows);
-    int alignmentIndexForRow(int row) const;
+    void highlightPathsForAlignments(const QList<int> &alignmentIndices);
 
 private slots:
     void onSelectionChanged();
@@ -88,6 +126,9 @@ private slots:
     void highlightAllPaths();
     void filterByMapq();
     void resetMapqFilter();
+    void goToNextPage();
+    void goToPreviousPage();
+    void pageSizeChanged(int value);
 
 signals:
     void selectionChanged();

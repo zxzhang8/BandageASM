@@ -26,7 +26,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QTableWidget>
+#include <QTableView>
 #include <QVBoxLayout>
 #include <QSpinBox>
 #include <QAbstractSpinBox>
@@ -41,28 +41,164 @@
 #include "mygraphicsscene.h"
 #include "mygraphicsview.h"
 
-GafPathsTable::GafPathsTable(QWidget *parent)
-    : QTableWidget(parent),
+GafPathsTableView::GafPathsTableView(QWidget *parent)
+    : QTableView(parent),
       m_pathColumn(-1)
 {
 }
 
-void GafPathsTable::setPathColumn(int col)
+void GafPathsTableView::setPathColumn(int col)
 {
     m_pathColumn = col;
 }
 
-void GafPathsTable::scrollTo(const QModelIndex &index, QAbstractItemView::ScrollHint hint)
+void GafPathsTableView::scrollTo(const QModelIndex &index, QAbstractItemView::ScrollHint hint)
 {
     if (index.column() == m_pathColumn)
     {
         int horizontalValue = horizontalScrollBar()->value();
-        QTableWidget::scrollTo(index, hint);
+        QTableView::scrollTo(index, hint);
         horizontalScrollBar()->setValue(horizontalValue);
         return;
     }
 
-    QTableWidget::scrollTo(index, hint);
+    QTableView::scrollTo(index, hint);
+}
+
+GafPathsModel::GafPathsModel(const QList<GafAlignment> * alignments, QObject * parent) :
+    QAbstractTableModel(parent),
+    m_alignments(alignments),
+    m_pageSize(500),
+    m_currentPage(0)
+{
+}
+
+int GafPathsModel::rowCount(const QModelIndex &parent) const
+{
+    if (parent.isValid())
+        return 0;
+    return m_pageRows.size();
+}
+
+int GafPathsModel::columnCount(const QModelIndex &parent) const
+{
+    if (parent.isValid())
+        return 0;
+    return 7;
+}
+
+QVariant GafPathsModel::data(const QModelIndex &index, int role) const
+{
+    if (!index.isValid() || role != Qt::DisplayRole)
+        return QVariant();
+
+    int row = index.row();
+    if (row < 0 || row >= m_pageRows.size())
+        return QVariant();
+
+    int alignmentIndex = m_pageRows[row];
+    if (alignmentIndex < 0 || alignmentIndex >= m_alignments->size())
+        return QVariant();
+
+    const GafAlignment &a = (*m_alignments)[alignmentIndex];
+    switch (index.column())
+    {
+        case 0: return QString::number(a.lineNumber);
+        case 1: return a.queryName;
+        case 2: return a.strand;
+        case 3: return (a.mappingQuality >= 0) ? QString::number(a.mappingQuality) : "";
+        case 4: return QString::number(a.path.getNodeCount());
+        case 5: return a.bandagePathString;
+        case 6:
+        {
+            if (a.queryStart >= 0 && a.queryEnd >= 0 && a.queryLength > 0)
+                return QString::number(a.queryStart) + "-" + QString::number(a.queryEnd) + " / " + QString::number(a.queryLength);
+            if (a.queryStart >= 0 && a.queryEnd >= 0)
+                return QString::number(a.queryStart) + "-" + QString::number(a.queryEnd);
+            return "";
+        }
+        default:
+            return QVariant();
+    }
+}
+
+QVariant GafPathsModel::headerData(int section, Qt::Orientation orientation, int role) const
+{
+    if (role != Qt::DisplayRole)
+        return QVariant();
+
+    if (orientation == Qt::Horizontal)
+    {
+        switch (section)
+        {
+            case 0: return "#";
+            case 1: return "Query";
+            case 2: return "Strand";
+            case 3: return "MAPQ";
+            case 4: return "Nodes";
+            case 5: return "Path";
+            case 6: return "Query range";
+            default: return QVariant();
+        }
+    }
+
+    return QVariant();
+}
+
+void GafPathsModel::setVisibleRows(const QList<int> &rows)
+{
+    m_visibleRows = rows;
+    if (m_currentPage >= pageCount())
+        m_currentPage = 0;
+    rebuildPageRows();
+}
+
+void GafPathsModel::setPageSize(int size)
+{
+    int newSize = qMax(1, size);
+    if (m_pageSize == newSize)
+        return;
+    m_pageSize = newSize;
+    if (m_currentPage >= pageCount())
+        m_currentPage = 0;
+    rebuildPageRows();
+}
+
+void GafPathsModel::setCurrentPage(int page)
+{
+    int clamped = qBound(0, page, qMax(0, pageCount() - 1));
+    if (m_currentPage == clamped)
+        return;
+    m_currentPage = clamped;
+    rebuildPageRows();
+}
+
+int GafPathsModel::pageCount() const
+{
+    if (m_visibleRows.isEmpty())
+        return 0;
+    return (m_visibleRows.size() + m_pageSize - 1) / m_pageSize;
+}
+
+int GafPathsModel::alignmentIndexForRow(int row) const
+{
+    if (row < 0 || row >= m_pageRows.size())
+        return -1;
+    return m_pageRows[row];
+}
+
+void GafPathsModel::rebuildPageRows()
+{
+    beginResetModel();
+    m_pageRows.clear();
+    if (!m_visibleRows.isEmpty())
+    {
+        int start = m_currentPage * m_pageSize;
+        int end = qMin(start + m_pageSize, m_visibleRows.size());
+        for (int i = start; i < end; ++i)
+            m_pageRows.push_back(m_visibleRows[i]);
+    }
+    endResetModel();
 }
 
 GafPathsDialog::GafPathsDialog(QWidget * parent,
@@ -72,14 +208,18 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_fileName(fileName),
     m_alignments(parseResult.alignments),
     m_warnings(parseResult.warnings),
-    m_table(new GafPathsTable(this)),
+    m_model(new GafPathsModel(&m_alignments, this)),
+    m_table(new GafPathsTableView(this)),
     m_highlightButton(new QPushButton("Highlight selected paths", this)),
     m_highlightAllButton(new QPushButton("Highlight all paths", this)),
     m_filterButton(new QPushButton("Filter", this)),
     m_resetFilterButton(new QPushButton("Reset", this)),
+    m_prevPageButton(new QPushButton("Prev", this)),
+    m_nextPageButton(new QPushButton("Next", this)),
     m_mapqFilterSpinBox(new QSpinBox(this)),
     m_nodeFilterLineEdit(new QLineEdit(this)),
     m_nodeFilterModeComboBox(new QComboBox(this)),
+    m_pageSizeSpinBox(new QSpinBox(this)),
     m_warningLabel(new QLabel(this))
 {
     setWindowTitle("GAF Paths");
@@ -90,15 +230,12 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     title->setWordWrap(true);
     layout->addWidget(title);
 
-    m_table->setColumnCount(7);
-    QStringList headers;
-    headers << "#" << "Query" << "Strand" << "MAPQ" << "Nodes" << "Path" << "Query range";
-    m_table->setHorizontalHeaderLabels(headers);
+    m_table->setModel(m_model);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    static_cast<GafPathsTable *>(m_table)->setPathColumn(5);
+    static_cast<GafPathsTableView *>(m_table)->setPathColumn(5);
     layout->addWidget(m_table);
 
     m_mapqFilterSpinBox->setRange(0, 1000);
@@ -113,6 +250,23 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_nodeFilterModeComboBox->addItem("Any");
     m_nodeFilterModeComboBox->addItem("All");
     m_nodeFilterModeComboBox->setFixedWidth(70);
+
+    m_pageSizeSpinBox->setRange(10, 5000);
+    m_pageSizeSpinBox->setValue(500);
+    m_pageSizeSpinBox->setPrefix("Page ");
+    m_pageSizeSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    m_pageSizeSpinBox->setFixedWidth(110);
+
+    m_pageLabel = new QLabel(this);
+    m_pageLabel->setMinimumWidth(120);
+
+    QHBoxLayout * paginationLayout = new QHBoxLayout();
+    paginationLayout->addWidget(m_prevPageButton);
+    paginationLayout->addWidget(m_nextPageButton);
+    paginationLayout->addWidget(m_pageLabel);
+    paginationLayout->addWidget(m_pageSizeSpinBox);
+    paginationLayout->addStretch();
+    layout->addLayout(paginationLayout);
 
     QHBoxLayout * buttonLayout = new QHBoxLayout();
     buttonLayout->addWidget(m_highlightButton);
@@ -141,11 +295,15 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     showWarnings();
     updateButtons();
 
-    connect(m_table, SIGNAL(itemSelectionChanged()), this, SLOT(onSelectionChanged()));
+    connect(m_table->selectionModel(), SIGNAL(selectionChanged(QItemSelection,QItemSelection)),
+            this, SLOT(onSelectionChanged()));
     connect(m_highlightButton, SIGNAL(clicked()), this, SLOT(highlightSelectedPaths()));
     connect(m_highlightAllButton, SIGNAL(clicked()), this, SLOT(highlightAllPaths()));
     connect(m_filterButton, SIGNAL(clicked()), this, SLOT(filterByMapq()));
     connect(m_resetFilterButton, SIGNAL(clicked()), this, SLOT(resetMapqFilter()));
+    connect(m_prevPageButton, SIGNAL(clicked()), this, SLOT(goToPreviousPage()));
+    connect(m_nextPageButton, SIGNAL(clicked()), this, SLOT(goToNextPage()));
+    connect(m_pageSizeSpinBox, SIGNAL(valueChanged(int)), this, SLOT(pageSizeChanged(int)));
 }
 
 
@@ -185,43 +343,10 @@ void GafPathsDialog::hideEvent(QHideEvent * event)
 
 void GafPathsDialog::populateTable()
 {
-    m_table->clearContents();
-    m_table->setRowCount(m_visibleRows.size());
-
-    for (int row = 0; row < m_visibleRows.size(); ++row)
-    {
-        int index = alignmentIndexForRow(row);
-        if (index < 0 || index >= m_alignments.size())
-            continue;
-
-        const GafAlignment &a = m_alignments[index];
-
-        QTableWidgetItem * indexItem = new QTableWidgetItem(QString::number(a.lineNumber));
-        QTableWidgetItem * queryItem = new QTableWidgetItem(a.queryName);
-        QTableWidgetItem * strandItem = new QTableWidgetItem(a.strand);
-        QString mapqString = (a.mappingQuality >= 0) ? QString::number(a.mappingQuality) : "";
-        QTableWidgetItem * mapqItem = new QTableWidgetItem(mapqString);
-        QTableWidgetItem * nodeCountItem = new QTableWidgetItem(QString::number(a.path.getNodeCount()));
-        QTableWidgetItem * pathItem = new QTableWidgetItem(a.bandagePathString);
-
-        QString queryRange = "";
-        if (a.queryStart >= 0 && a.queryEnd >= 0 && a.queryLength > 0)
-            queryRange = QString::number(a.queryStart) + "-" + QString::number(a.queryEnd) + " / " + QString::number(a.queryLength);
-        else if (a.queryStart >= 0 && a.queryEnd >= 0)
-            queryRange = QString::number(a.queryStart) + "-" + QString::number(a.queryEnd);
-        QTableWidgetItem * rangeItem = new QTableWidgetItem(queryRange);
-
-        indexItem->setData(Qt::UserRole, index);
-
-        m_table->setItem(row, 0, indexItem);
-        m_table->setItem(row, 1, queryItem);
-        m_table->setItem(row, 2, strandItem);
-        m_table->setItem(row, 3, mapqItem);
-        m_table->setItem(row, 4, nodeCountItem);
-        m_table->setItem(row, 5, pathItem);
-        m_table->setItem(row, 6, rangeItem);
-    }
-
+    m_model->setVisibleRows(m_visibleRows);
+    m_model->setPageSize(m_pageSizeSpinBox->value());
+    m_model->setCurrentPage(0);
+    updatePaginationControls();
     m_table->resizeColumnsToContents();
 }
 
@@ -244,10 +369,12 @@ void GafPathsDialog::showWarnings()
 
 void GafPathsDialog::updateButtons()
 {
-    m_highlightButton->setEnabled(!m_table->selectedItems().isEmpty());
-    m_highlightAllButton->setEnabled(!m_visibleRows.isEmpty());
+    bool hasSelection = m_table->selectionModel() != 0 &&
+            m_table->selectionModel()->hasSelection();
+    m_highlightButton->setEnabled(hasSelection);
+    m_highlightAllButton->setEnabled(m_model->totalRows() > 0);
     m_filterButton->setEnabled(true);
-    m_resetFilterButton->setEnabled(m_visibleRows.size() != m_alignments.size() ||
+    m_resetFilterButton->setEnabled(m_model->totalRows() != m_alignments.size() ||
                                     m_currentMapqThreshold != 0 ||
                                     !m_nodeFilters.isEmpty());
 }
@@ -261,45 +388,37 @@ void GafPathsDialog::onSelectionChanged()
 
 void GafPathsDialog::highlightSelectedPaths()
 {
-    QList<QTableWidgetSelectionRange> selection = m_table->selectedRanges();
-    if (selection.isEmpty())
+    if (m_table->selectionModel() == 0 || !m_table->selectionModel()->hasSelection())
     {
         QMessageBox::information(this, "No paths selected", "Select at least one path first.");
         return;
     }
 
-    QList<int> selectedRows;
-    for (int i = 0; i < selection.size(); ++i)
+    QModelIndexList selectedRows = m_table->selectionModel()->selectedRows();
+    QList<int> alignmentIndices;
+    for (int i = 0; i < selectedRows.size(); ++i)
     {
-        QTableWidgetSelectionRange range = selection[i];
-        for (int row = range.topRow(); row <= range.bottomRow(); ++row)
-        {
-            if (!selectedRows.contains(row))
-                selectedRows.push_back(row);
-        }
+        int alignmentIndex = m_model->alignmentIndexForRow(selectedRows[i].row());
+        if (alignmentIndex >= 0)
+            alignmentIndices.push_back(alignmentIndex);
     }
 
-    highlightPathsForRows(selectedRows);
+    highlightPathsForAlignments(alignmentIndices);
 }
 
 
 void GafPathsDialog::highlightAllPaths()
 {
-    if (m_visibleRows.isEmpty())
+    if (m_model->totalRows() == 0)
     {
         QMessageBox::information(this, "No paths to highlight", "No paths are visible with the current filters.");
         return;
     }
 
-    QList<int> allRows;
-    for (int i = 0; i < m_visibleRows.size(); ++i)
-        allRows << i;
-
-    highlightPathsForRows(allRows);
+    highlightPathsForAlignments(m_model->visibleRows());
 }
 
-
-void GafPathsDialog::highlightPathsForRows(const QList<int> &rows)
+void GafPathsDialog::highlightPathsForAlignments(const QList<int> &alignmentIndices)
 {
     g_memory->gafPathDialogIsVisible = true;
     g_memory->queryPaths.clear();
@@ -309,10 +428,9 @@ void GafPathsDialog::highlightPathsForRows(const QList<int> &rows)
 
     QStringList nodesNotFound;
 
-    for (int i = 0; i < rows.size(); ++i)
+    for (int i = 0; i < alignmentIndices.size(); ++i)
     {
-        int row = rows[i];
-        int alignmentIndex = alignmentIndexForRow(row);
+        int alignmentIndex = alignmentIndices[i];
         if (alignmentIndex < 0 || alignmentIndex >= m_alignments.size())
             continue;
 
@@ -451,10 +569,37 @@ void GafPathsDialog::resetFilter()
     updateButtons();
 }
 
-
-int GafPathsDialog::alignmentIndexForRow(int row) const
+void GafPathsDialog::updatePaginationControls()
 {
-    if (row < 0 || row >= m_visibleRows.size())
-        return -1;
-    return m_visibleRows[row];
+    int pageCount = m_model->pageCount();
+    int currentPage = m_model->currentPage();
+
+    if (pageCount == 0)
+        m_pageLabel->setText("Page 0 / 0");
+    else
+        m_pageLabel->setText("Page " + QString::number(currentPage + 1) + " / " + QString::number(pageCount));
+
+    m_prevPageButton->setEnabled(currentPage > 0);
+    m_nextPageButton->setEnabled(currentPage + 1 < pageCount);
+}
+
+void GafPathsDialog::goToNextPage()
+{
+    m_model->setCurrentPage(m_model->currentPage() + 1);
+    updatePaginationControls();
+    updateButtons();
+}
+
+void GafPathsDialog::goToPreviousPage()
+{
+    m_model->setCurrentPage(m_model->currentPage() - 1);
+    updatePaginationControls();
+    updateButtons();
+}
+
+void GafPathsDialog::pageSizeChanged(int value)
+{
+    m_model->setPageSize(value);
+    updatePaginationControls();
+    updateButtons();
 }
