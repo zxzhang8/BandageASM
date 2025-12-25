@@ -69,6 +69,7 @@
 #include <limits>
 #include "graphinfodialog.h"
 #include "selectededgepathwidget.h"
+#include "nodesequencewidget.h"
 #include <QHash>
 #include <QQueue>
 #include <QSet>
@@ -210,6 +211,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->actionChange_node_name, SIGNAL(triggered(bool)), this, SLOT(changeNodeName()));
     connect(ui->actionChange_node_depth, SIGNAL(triggered(bool)), this, SLOT(changeNodeDepth()));
     connect(ui->moreInfoButton, SIGNAL(clicked(bool)), this, SLOT(openGraphInfoDialog()));
+    connect(g_graphicsView, SIGNAL(showNodeSequence(DeBruijnNode *)), this, SLOT(showNodeSequenceTab(DeBruijnNode *)));
 
     connect(this, SIGNAL(windowLoaded()), this, SLOT(afterMainWindowShow()), Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection));
 }
@@ -279,6 +281,16 @@ void MainWindow::cleanUp()
         m_gafTabIndex = -1;
         m_gafPathsWidget = 0;
     }
+
+    for (int i = m_nodeSequenceWidgets.size() - 1; i >= 0; --i)
+    {
+        NodeSequenceWidget * widget = m_nodeSequenceWidgets[i];
+        int index = m_tabWidget->indexOf(widget);
+        if (index != -1)
+            m_tabWidget->removeTab(index);
+        delete widget;
+    }
+    m_nodeSequenceWidgets.clear();
 
     g_blastSearch->cleanUp();
     g_assemblyGraph->cleanUp();
@@ -2993,4 +3005,16 @@ void MainWindow::openGraphInfoDialog()
 {
     GraphInfoDialog graphInfoDialog(this);
     graphInfoDialog.exec();
+}
+
+void MainWindow::showNodeSequenceTab(DeBruijnNode * node)
+{
+    if (node == 0 || m_tabWidget == 0)
+        return;
+
+    NodeSequenceWidget * widget = new NodeSequenceWidget(m_tabWidget, node);
+    QString tabTitle = "Sequence " + node->getName();
+    int tabIndex = m_tabWidget->addTab(widget, tabTitle);
+    m_tabWidget->setCurrentIndex(tabIndex);
+    m_nodeSequenceWidgets.append(widget);
 }

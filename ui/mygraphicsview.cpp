@@ -18,6 +18,8 @@
 
 #include "mygraphicsview.h"
 #include <QMouseEvent>
+#include <QMenu>
+#include <QContextMenuEvent>
 #include "../program/globals.h"
 #include "../program/settings.h"
 #include <QFont>
@@ -90,6 +92,30 @@ void MyGraphicsView::mouseDoubleClickEvent(QMouseEvent * event)
     GraphicsItemNode * graphicsItemNode = dynamic_cast<GraphicsItemNode *>(item);
     if (graphicsItemNode != 0)
         emit doubleClickedNode(graphicsItemNode->m_deBruijnNode);
+}
+
+void MyGraphicsView::contextMenuEvent(QContextMenuEvent * event)
+{
+    if (event->modifiers().testFlag(Qt::ControlModifier))
+    {
+        QGraphicsView::contextMenuEvent(event);
+        return;
+    }
+
+    QGraphicsItem * item = itemAt(event->pos());
+    GraphicsItemNode * graphicsItemNode = dynamic_cast<GraphicsItemNode *>(item);
+    if (graphicsItemNode != 0)
+    {
+        QMenu menu(this);
+        QAction * showSequenceAction = menu.addAction("Show node sequence");
+        QAction * selectedAction = menu.exec(event->globalPos());
+        if (selectedAction == showSequenceAction)
+            emit showNodeSequence(graphicsItemNode->m_deBruijnNode);
+        event->accept();
+        return;
+    }
+
+    QGraphicsView::contextMenuEvent(event);
 }
 
 //Adapted from:

@@ -25,6 +25,7 @@
 
 class GraphicsViewZoom;
 class DeBruijnNode;
+class QContextMenuEvent;
 
 class MyGraphicsView : public QGraphicsView
 {
@@ -56,6 +57,7 @@ protected:
     void mouseMoveEvent(QMouseEvent * event);
     void keyPressEvent(QKeyEvent * event);
     void mouseDoubleClickEvent(QMouseEvent * event);
+    void contextMenuEvent(QContextMenuEvent * event);
 
 private:
     double m_rotation;
@@ -71,6 +73,7 @@ signals:
     void doubleClickedNode(DeBruijnNode * node);
     void copySelectedSequencesToClipboard();
     void saveSelectedSequencesToFile();
+    void showNodeSequence(DeBruijnNode * node);
 };
 
 #endif // MYGRAPHICSVIEW_H

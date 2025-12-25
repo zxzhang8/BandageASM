@@ -27,6 +27,7 @@
 #include <vector>
 #include <QLineEdit>
 #include <QRectF>
+#include <QList>
 #include "../program/globals.h"
 #include <QThread>
 #include "../ogdf/energybased/FMMMLayout.h"
@@ -40,6 +41,7 @@ class Path;
 class BlastSearchDialog;
 class GafPathsDialog;
 class SelectedEdgePathWidget;
+class NodeSequenceWidget;
 class QDockWidget;
 
 namespace Ui {
@@ -72,6 +74,7 @@ private:
     GafPathsDialog * m_gafPathsWidget;
     int m_selectedEdgePathTabIndex;
     SelectedEdgePathWidget * m_selectedEdgePathWidget;
+    QList<NodeSequenceWidget *> m_nodeSequenceWidgets;
     bool m_alreadyShown;
 
     void cleanUp();
@@ -177,6 +180,7 @@ private slots:
     void changeNodeName();
     void changeNodeDepth();
     void openGraphInfoDialog();
+    void showNodeSequenceTab(DeBruijnNode * node);
 
 protected:
       void showEvent(QShowEvent *ev);
