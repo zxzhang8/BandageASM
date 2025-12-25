@@ -28,6 +28,8 @@
 #include <QVBoxLayout>
 #include <QSpinBox>
 #include <QAbstractSpinBox>
+#include <QLineEdit>
+#include <QScrollBar>
 #include "../graph/debruijnnode.h"
 #include "../graph/graphicsitemnode.h"
 #include "../program/globals.h"
@@ -37,6 +39,30 @@
 #include "mygraphicsscene.h"
 #include "mygraphicsview.h"
 
+GafPathsTable::GafPathsTable(QWidget *parent)
+    : QTableWidget(parent),
+      m_pathColumn(-1)
+{
+}
+
+void GafPathsTable::setPathColumn(int col)
+{
+    m_pathColumn = col;
+}
+
+void GafPathsTable::scrollTo(const QModelIndex &index, ScrollHint hint)
+{
+    if (index.column() == m_pathColumn)
+    {
+        int horizontalValue = horizontalScrollBar()->value();
+        QTableWidget::scrollTo(index, hint);
+        horizontalScrollBar()->setValue(horizontalValue);
+        return;
+    }
+
+    QTableWidget::scrollTo(index, hint);
+}
+
 GafPathsDialog::GafPathsDialog(QWidget * parent,
                                const QString &fileName,
                                const GafParseResult &parseResult) :
@@ -44,12 +70,13 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_fileName(fileName),
     m_alignments(parseResult.alignments),
     m_warnings(parseResult.warnings),
-    m_table(new QTableWidget(this)),
+    m_table(new GafPathsTable(this)),
     m_highlightButton(new QPushButton("Highlight selected paths", this)),
     m_highlightAllButton(new QPushButton("Highlight all paths", this)),
     m_filterButton(new QPushButton("Filter", this)),
     m_resetFilterButton(new QPushButton("Reset", this)),
     m_mapqFilterSpinBox(new QSpinBox(this)),
+    m_nodeFilterLineEdit(new QLineEdit(this)),
     m_warningLabel(new QLabel(this))
 {
     setWindowTitle("GAF Paths");
@@ -68,6 +95,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    static_cast<GafPathsTable *>(m_table)->setPathColumn(5);
     layout->addWidget(m_table);
 
     m_mapqFilterSpinBox->setRange(0, 1000);
@@ -76,10 +104,15 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_mapqFilterSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
     m_mapqFilterSpinBox->setFixedWidth(120);
 
+    m_nodeFilterLineEdit->setPlaceholderText("Node name");
+    m_nodeFilterLineEdit->setFixedWidth(140);
+
     QHBoxLayout * buttonLayout = new QHBoxLayout();
     buttonLayout->addWidget(m_highlightButton);
     buttonLayout->addWidget(m_highlightAllButton);
     buttonLayout->addStretch();
+    buttonLayout->addWidget(new QLabel("Path includes:", this));
+    buttonLayout->addWidget(m_nodeFilterLineEdit);
     buttonLayout->addWidget(m_mapqFilterSpinBox);
     buttonLayout->addWidget(m_filterButton);
     buttonLayout->addWidget(m_resetFilterButton);
@@ -93,6 +126,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     for (int i = 0; i < m_alignments.size(); ++i)
         m_visibleRows << i;
     m_currentMapqThreshold = 0;
+    m_nodeFilter.clear();
 
     populateTable();
     showWarnings();
@@ -204,7 +238,9 @@ void GafPathsDialog::updateButtons()
     m_highlightButton->setEnabled(!m_table->selectedItems().isEmpty());
     m_highlightAllButton->setEnabled(!m_visibleRows.isEmpty());
     m_filterButton->setEnabled(true);
-    m_resetFilterButton->setEnabled(m_visibleRows.size() != m_alignments.size() || m_currentMapqThreshold != 0);
+    m_resetFilterButton->setEnabled(m_visibleRows.size() != m_alignments.size() ||
+                                    m_currentMapqThreshold != 0 ||
+                                    !m_nodeFilter.isEmpty());
 }
 
 
@@ -310,6 +346,7 @@ void GafPathsDialog::highlightPathsForRows(const QList<int> &rows)
 void GafPathsDialog::filterByMapq()
 {
     m_currentMapqThreshold = m_mapqFilterSpinBox->value();
+    m_nodeFilter = m_nodeFilterLineEdit->text().trimmed();
     applyMapqFilter();
 }
 
@@ -327,9 +364,38 @@ void GafPathsDialog::applyMapqFilter()
     for (int i = 0; i < m_alignments.size(); ++i)
     {
         int mapq = m_alignments[i].mappingQuality;
-        if (m_currentMapqThreshold <= 0)
-            m_visibleRows << i; // show all when filter is zero
-        else if (mapq >= m_currentMapqThreshold)
+        bool mapqPass = (m_currentMapqThreshold <= 0 || mapq >= m_currentMapqThreshold);
+        if (!mapqPass)
+            continue;
+
+        if (m_nodeFilter.isEmpty())
+        {
+            m_visibleRows << i;
+            continue;
+        }
+
+        const QList<DeBruijnNode *> nodes = m_alignments[i].path.getNodes();
+        bool matched = false;
+        bool filterHasSign = m_nodeFilter.endsWith('+') || m_nodeFilter.endsWith('-');
+        for (int n = 0; n < nodes.size(); ++n)
+        {
+            const QString nodeName = nodes[n]->getName();
+            if (filterHasSign)
+            {
+                if (nodeName == m_nodeFilter)
+                {
+                    matched = true;
+                    break;
+                }
+            }
+            else if (nodes[n]->getNameWithoutSign() == m_nodeFilter)
+            {
+                matched = true;
+                break;
+            }
+        }
+
+        if (matched)
             m_visibleRows << i;
     }
 
@@ -346,6 +412,8 @@ void GafPathsDialog::resetFilter()
         m_visibleRows << i;
     m_currentMapqThreshold = 0;
     m_mapqFilterSpinBox->setValue(0);
+    m_nodeFilter.clear();
+    m_nodeFilterLineEdit->setText("");
     populateTable();
     showWarnings();
     updateButtons();

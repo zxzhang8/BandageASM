@@ -1578,7 +1578,7 @@ QStringList AssemblyGraph::splitCsv(QString line, QString sep)
     while (it.hasNext()) {
         auto match = it.next();
         QString field = match.captured().replace("\"\"", "\"");
-        if (field[0] == '"' && field[field.length() - 1] == '"') {
+        if (field.length() >= 2 && field[0] == '"' && field[field.length() - 1] == '"') {
             field = field.mid(1, field.length() - 2);
         }
         list << field;
@@ -1655,6 +1655,8 @@ bool AssemblyGraph::loadCSV(QString filename, QStringList * columns, QString * e
         QApplication::processEvents();
 
         QStringList cols = splitCsv(in.readLine(), sep);
+        if (cols.isEmpty())
+            continue;
         QString nodeName = getNodeNameFromString(cols[0]);
 
         //Get rid of the node name - no need to save that.

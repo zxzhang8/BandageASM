@@ -26,6 +26,23 @@ class QLabel;
 class QPushButton;
 class QTableWidget;
 class QSpinBox;
+class QLineEdit;
+class QModelIndex;
+
+class GafPathsTable : public QTableWidget
+{
+    Q_OBJECT
+
+public:
+    explicit GafPathsTable(QWidget *parent = 0);
+    void setPathColumn(int col);
+
+protected:
+    void scrollTo(const QModelIndex &index, ScrollHint hint = EnsureVisible) override;
+
+private:
+    int m_pathColumn;
+};
 
 class GafPathsDialog : public QWidget
 {
@@ -47,9 +64,11 @@ private:
     QPushButton * m_filterButton;
     QPushButton * m_resetFilterButton;
     QSpinBox * m_mapqFilterSpinBox;
+    QLineEdit * m_nodeFilterLineEdit;
     QLabel * m_warningLabel;
     QList<int> m_visibleRows;
     int m_currentMapqThreshold;
+    QString m_nodeFilter;
 
     void populateTable();
     void applyMapqFilter();

@@ -117,7 +117,8 @@ SOURCES += \
     ogdf/basic/Constraint.cpp \
     ogdf/internal/energybased/MultilevelGraph.cpp \
     ui/graphinfodialog.cpp \
-    ui/tablewidgetitemname.cpp
+    ui/tablewidgetitemname.cpp \
+    ui/nodesequencewidget.cpp
 
 HEADERS  += \
     program/settings.h \
@@ -240,7 +241,8 @@ HEADERS  += \
     ogdf/basic/Constraints.h \
     ogdf/internal/energybased/MultilevelGraph.h \
     ui/graphinfodialog.h \
-    ui/tablewidgetitemname.h
+    ui/tablewidgetitemname.h \
+    ui/nodesequencewidget.h
 
 FORMS    += \
     ui/mainwindow.ui \

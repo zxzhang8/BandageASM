@@ -79,7 +79,8 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     ui(new Ui::MainWindow), m_layoutThread(0), m_imageFilter("PNG (*.png)"),
     m_fileToLoadOnStartup(fileToLoadOnStartup), m_drawGraphAfterLoad(drawGraphAfterLoad),
     m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafTabIndex(-1), m_gafPathsWidget(0),
-    m_selectedEdgePathTabIndex(-1), m_selectedEdgePathWidget(0), m_alreadyShown(false)
+    m_selectedEdgePathTabIndex(-1), m_selectedEdgePathWidget(0), m_nodeSequenceTabIndex(-1),
+    m_nodeSequenceWidget(0), m_alreadyShown(false)
 {
     ui->setupUi(this);
 
@@ -198,6 +199,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->nodeWidthSpinBox, SIGNAL(valueChanged(double)), this, SLOT(nodeWidthChanged()));
     connect(g_graphicsView, SIGNAL(copySelectedSequencesToClipboard()), this, SLOT(copySelectedSequencesToClipboard()));
     connect(g_graphicsView, SIGNAL(saveSelectedSequencesToFile()), this, SLOT(saveSelectedSequencesToFile()));
+    connect(g_graphicsView, SIGNAL(showNodeSequenceRequested(DeBruijnNode*)), this, SLOT(showNodeSequenceTab(DeBruijnNode*)));
     connect(ui->actionSave_entire_graph_to_FASTA, SIGNAL(triggered(bool)), this, SLOT(saveEntireGraphToFasta()));
     connect(ui->actionSave_entire_graph_to_FASTA_only_positive_nodes, SIGNAL(triggered(bool)), this, SLOT(saveEntireGraphToFastaOnlyPositiveNodes()));
     connect(ui->actionSave_entire_graph_to_GFA, SIGNAL(triggered(bool)), this, SLOT(saveEntireGraphToGfa()));
@@ -273,6 +275,15 @@ void MainWindow::cleanUp()
         m_selectedEdgePathWidget = 0;
     }
 
+    if (m_nodeSequenceTabIndex != -1 && m_tabWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_nodeSequenceTabIndex);
+        m_tabWidget->removeTab(m_nodeSequenceTabIndex);
+        delete tab;
+        m_nodeSequenceTabIndex = -1;
+        m_nodeSequenceWidget = 0;
+    }
+
     if (m_gafTabIndex != -1 && m_tabWidget != 0)
     {
         QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
@@ -313,6 +324,15 @@ void MainWindow::cleanUp()
         delete tab;
         m_selectedEdgePathTabIndex = -1;
         m_selectedEdgePathWidget = 0;
+    }
+
+    if (m_nodeSequenceTabIndex != -1 && m_tabWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_nodeSequenceTabIndex);
+        m_tabWidget->removeTab(m_nodeSequenceTabIndex);
+        delete tab;
+        m_nodeSequenceTabIndex = -1;
+        m_nodeSequenceWidget = 0;
     }
 
     if (m_gafTabIndex != -1 && m_tabWidget != 0)
@@ -461,6 +481,15 @@ void MainWindow::loadGraph(QString fullFileName)
             delete tab;
             m_selectedEdgePathTabIndex = -1;
             m_selectedEdgePathWidget = 0;
+        }
+
+        if (m_nodeSequenceTabIndex != -1 && m_tabWidget != 0)
+        {
+            QWidget * tab = m_tabWidget->widget(m_nodeSequenceTabIndex);
+            m_tabWidget->removeTab(m_nodeSequenceTabIndex);
+            delete tab;
+            m_nodeSequenceTabIndex = -1;
+            m_nodeSequenceWidget = 0;
         }
 
         // Reset any loaded GAF paths because a new graph is being loaded.
@@ -662,6 +691,26 @@ void MainWindow::showSelectedEdgePathTab(const Path &path)
     m_selectedEdgePathWidget = new SelectedEdgePathWidget(m_tabWidget, path, sequencesAvailable, missingSequenceNodes);
     m_selectedEdgePathTabIndex = m_tabWidget->addTab(m_selectedEdgePathWidget, "Selected path");
     m_tabWidget->setCurrentIndex(m_selectedEdgePathTabIndex);
+}
+
+void MainWindow::showNodeSequenceTab(DeBruijnNode * node)
+{
+    if (m_tabWidget == 0 || node == 0)
+        return;
+
+    if (m_nodeSequenceTabIndex != -1)
+    {
+        QWidget * tab = m_tabWidget->widget(m_nodeSequenceTabIndex);
+        m_tabWidget->removeTab(m_nodeSequenceTabIndex);
+        delete tab;
+        m_nodeSequenceTabIndex = -1;
+        m_nodeSequenceWidget = 0;
+    }
+
+    m_nodeSequenceWidget = new NodeSequenceWidget(m_tabWidget, node);
+    QString tabTitle = "Node " + node->getName();
+    m_nodeSequenceTabIndex = m_tabWidget->addTab(m_nodeSequenceWidget, tabTitle);
+    m_tabWidget->setCurrentIndex(m_nodeSequenceTabIndex);
 }
 
 
