@@ -24,6 +24,7 @@
 #include <QRegularExpression>
 #include <QHideEvent>
 #include <QLabel>
+#include <QIntValidator>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTableView>
@@ -220,6 +221,8 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_nodeFilterLineEdit(new QLineEdit(this)),
     m_nodeFilterModeComboBox(new QComboBox(this)),
     m_pageSizeSpinBox(new QSpinBox(this)),
+    m_pageCurrentLineEdit(new QLineEdit(this)),
+    m_pageTotalLabel(new QLabel(this)),
     m_warningLabel(new QLabel(this))
 {
     setWindowTitle("GAF Paths");
@@ -253,18 +256,21 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
 
     m_pageSizeSpinBox->setRange(10, 5000);
     m_pageSizeSpinBox->setValue(500);
-    m_pageSizeSpinBox->setPrefix("Page ");
+    m_pageSizeSpinBox->setPrefix("Page size ");
     m_pageSizeSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
-    m_pageSizeSpinBox->setFixedWidth(110);
-
-    m_pageLabel = new QLabel(this);
-    m_pageLabel->setMinimumWidth(120);
+    m_pageSizeSpinBox->setFixedWidth(140);
 
     QHBoxLayout * paginationLayout = new QHBoxLayout();
+    paginationLayout->addStretch();
+    paginationLayout->addWidget(m_pageSizeSpinBox);
     paginationLayout->addWidget(m_prevPageButton);
     paginationLayout->addWidget(m_nextPageButton);
-    paginationLayout->addWidget(m_pageLabel);
-    paginationLayout->addWidget(m_pageSizeSpinBox);
+    paginationLayout->addWidget(new QLabel("Page", this));
+    m_pageCurrentLineEdit->setFixedWidth(50);
+    m_pageCurrentLineEdit->setValidator(new QIntValidator(1, 1, m_pageCurrentLineEdit));
+    paginationLayout->addWidget(m_pageCurrentLineEdit);
+    m_pageTotalLabel->setMinimumWidth(60);
+    paginationLayout->addWidget(m_pageTotalLabel);
     paginationLayout->addStretch();
     layout->addLayout(paginationLayout);
 
@@ -304,6 +310,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     connect(m_prevPageButton, SIGNAL(clicked()), this, SLOT(goToPreviousPage()));
     connect(m_nextPageButton, SIGNAL(clicked()), this, SLOT(goToNextPage()));
     connect(m_pageSizeSpinBox, SIGNAL(valueChanged(int)), this, SLOT(pageSizeChanged(int)));
+    connect(m_pageCurrentLineEdit, SIGNAL(returnPressed()), this, SLOT(pageCurrentEdited()));
 }
 
 
@@ -574,13 +581,18 @@ void GafPathsDialog::updatePaginationControls()
     int pageCount = m_model->pageCount();
     int currentPage = m_model->currentPage();
 
-    if (pageCount == 0)
-        m_pageLabel->setText("Page 0 / 0");
-    else
-        m_pageLabel->setText("Page " + QString::number(currentPage + 1) + " / " + QString::number(pageCount));
-
     m_prevPageButton->setEnabled(currentPage > 0);
     m_nextPageButton->setEnabled(currentPage + 1 < pageCount);
+
+    int safePageCount = qMax(1, pageCount);
+    m_pageTotalLabel->setText("/ " + QString::number(pageCount));
+    m_pageCurrentLineEdit->setEnabled(pageCount > 0);
+    m_pageCurrentLineEdit->blockSignals(true);
+    m_pageCurrentLineEdit->setText(pageCount == 0 ? "0" : QString::number(currentPage + 1));
+    QIntValidator * validator = qobject_cast<QIntValidator *>(const_cast<QValidator *>(m_pageCurrentLineEdit->validator()));
+    if (validator != 0)
+        validator->setRange(1, safePageCount);
+    m_pageCurrentLineEdit->blockSignals(false);
 }
 
 void GafPathsDialog::goToNextPage()
@@ -600,6 +612,17 @@ void GafPathsDialog::goToPreviousPage()
 void GafPathsDialog::pageSizeChanged(int value)
 {
     m_model->setPageSize(value);
+    updatePaginationControls();
+    updateButtons();
+}
+
+void GafPathsDialog::pageCurrentEdited()
+{
+    bool ok = false;
+    int value = m_pageCurrentLineEdit->text().toInt(&ok);
+    if (!ok)
+        return;
+    m_model->setCurrentPage(value - 1);
     updatePaginationControls();
     updateButtons();
 }

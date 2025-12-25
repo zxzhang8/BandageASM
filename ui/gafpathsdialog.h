@@ -105,8 +105,9 @@ private:
     QLineEdit * m_nodeFilterLineEdit;
     QComboBox * m_nodeFilterModeComboBox;
     QSpinBox * m_pageSizeSpinBox;
+    QLineEdit * m_pageCurrentLineEdit;
+    QLabel * m_pageTotalLabel;
     QLabel * m_warningLabel;
-    QLabel * m_pageLabel;
     QList<int> m_visibleRows;
     int m_currentMapqThreshold;
     QStringList m_nodeFilters;
@@ -129,6 +130,7 @@ private slots:
     void goToNextPage();
     void goToPreviousPage();
     void pageSizeChanged(int value);
+    void pageCurrentEdited();
 
 signals:
     void selectionChanged();
