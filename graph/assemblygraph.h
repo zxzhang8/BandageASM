@@ -171,6 +171,7 @@ public:
     bool attemptToLoadSequencesFromFasta();
     long long getTotalLengthOrphanedNodes() const;
     bool useLinearLayout() const;
+    void clearAllCsvData();
 
 
 private:
@@ -189,7 +190,6 @@ private:
     int getLengthFromCigar(QString cigar);
     int getCigarCount(QString cigarCode, QString cigar);
     QString getOppositeNodeName(QString nodeName);
-    void clearAllCsvData();
     QString getNodeNameFromString(QString string);
     QString getNewNodeName(QString oldNodeName);
     void duplicateGraphicsNode(DeBruijnNode * originalNode, DeBruijnNode * newNode, MyGraphicsScene * scene);
