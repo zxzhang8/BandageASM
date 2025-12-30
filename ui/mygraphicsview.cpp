@@ -26,12 +26,13 @@
 #include "graphicsviewzoom.h"
 #include <qmath.h>
 #include <QMessageBox>
+#include <QGraphicsItem>
 #include <math.h>
 #include "../graph/graphicsitemnode.h"
 #include "../graph/debruijnnode.h"
 
 MyGraphicsView::MyGraphicsView(QObject * /*parent*/) :
-    QGraphicsView(), m_rotation(0.0)
+    QGraphicsView(), m_rotation(0.0), m_restoreSelectionOnRelease(false)
 {
     setDragMode(QGraphicsView::RubberBandDrag);
     setAntialiasing(g_settings->antialiasing);
@@ -49,6 +50,21 @@ void MyGraphicsView::mousePressEvent(QMouseEvent * event)
         g_settings->nodeDragging = ONE_PIECE;
 
     m_previousPos = event->pos();
+    m_restoreSelectionOnRelease = false;
+    m_selectionBeforeClick.clear();
+
+    if (g_settings->preserveSelectionOnBackgroundClick &&
+        event->button() == Qt::LeftButton &&
+        !(event->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier)))
+    {
+        QGraphicsItem * item = itemAt(event->pos());
+        if (item == 0)
+        {
+            m_selectionBeforeClick = scene()->selectedItems();
+            m_selectionPressPos = event->pos();
+            m_restoreSelectionOnRelease = true;
+        }
+    }
 
     QGraphicsView::mousePressEvent(event);
 }
@@ -56,6 +72,22 @@ void MyGraphicsView::mousePressEvent(QMouseEvent * event)
 void MyGraphicsView::mouseReleaseEvent(QMouseEvent * event)
 {
     QGraphicsView::mouseReleaseEvent(event);
+    if (m_restoreSelectionOnRelease)
+    {
+        const int maxClickDistance = 3;
+        if ((event->pos() - m_selectionPressPos).manhattanLength() <= maxClickDistance &&
+            itemAt(event->pos()) == 0)
+        {
+            for (int i = 0; i < m_selectionBeforeClick.size(); ++i)
+            {
+                QGraphicsItem * item = m_selectionBeforeClick[i];
+                if (item != 0 && item->scene() == scene())
+                    item->setSelected(true);
+            }
+        }
+        m_restoreSelectionOnRelease = false;
+        m_selectionBeforeClick.clear();
+    }
     setDragMode(QGraphicsView::RubberBandDrag);
     g_settings->nodeDragging = NEARBY_PIECES;
 }

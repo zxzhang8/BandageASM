@@ -131,6 +131,7 @@ public:
     bool textOutline;
     bool antialiasing;
     bool positionTextNodeCentre;
+    bool preserveSelectionOnBackgroundClick;
 
     NodeDragging nodeDragging;
 

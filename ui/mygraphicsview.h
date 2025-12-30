@@ -20,12 +20,14 @@
 #define MYGRAPHICSVIEW_H
 
 #include <QGraphicsView>
+#include <QList>
 #include <QPoint>
 #include <QLineF>
 
 class GraphicsViewZoom;
 class DeBruijnNode;
 class QContextMenuEvent;
+class QGraphicsItem;
 
 class MyGraphicsView : public QGraphicsView
 {
@@ -61,6 +63,9 @@ protected:
 
 private:
     double m_rotation;
+    bool m_restoreSelectionOnRelease;
+    QPoint m_selectionPressPos;
+    QList<QGraphicsItem *> m_selectionBeforeClick;
 
     double distance(double x1, double y1, double x2, double y2);
     double angleBetweenTwoLines(QPointF line1Start, QPointF line1End, QPointF line2Start, QPointF line2End);

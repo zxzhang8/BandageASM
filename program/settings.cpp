@@ -78,6 +78,7 @@ Settings::Settings()
     textOutline = false;
     antialiasing = true;
     positionTextNodeCentre = false;
+    preserveSelectionOnBackgroundClick = false;
 
     nodeDragging = NEARBY_PIECES;
 

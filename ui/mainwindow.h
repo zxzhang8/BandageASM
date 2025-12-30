@@ -184,6 +184,7 @@ private slots:
     void generateSequenceFromSelectedEdges();
     void findPathsInSelectedNodes();
     void reverseSelectedNodesPathEndpoints();
+    void selectionModeToggled(bool enabled);
     void nodeWidthChanged();
     void saveEntireGraphToFasta();
     void saveEntireGraphToFastaOnlyPositiveNodes();

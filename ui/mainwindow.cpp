@@ -205,6 +205,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->selectedEdgesGenSeqButton, SIGNAL(clicked()), this, SLOT(generateSequenceFromSelectedEdges()));
     connect(ui->selectedNodesPathReverseButton, SIGNAL(clicked()), this, SLOT(reverseSelectedNodesPathEndpoints()));
     connect(ui->selectedNodesFindPathsButton, SIGNAL(clicked()), this, SLOT(findPathsInSelectedNodes()));
+    connect(ui->selectionModeButton, SIGNAL(toggled(bool)), this, SLOT(selectionModeToggled(bool)));
     connect(ui->nodeWidthSpinBox, SIGNAL(valueChanged(double)), this, SLOT(nodeWidthChanged()));
     connect(g_graphicsView, SIGNAL(copySelectedSequencesToClipboard()), this, SLOT(copySelectedSequencesToClipboard()));
     connect(g_graphicsView, SIGNAL(saveSelectedSequencesToFile()), this, SLOT(saveSelectedSequencesToFile()));
@@ -983,6 +984,11 @@ void MainWindow::reverseSelectedNodesPathEndpoints()
 
     ui->selectedNodesPathStartComboBox->setCurrentText(endText);
     ui->selectedNodesPathEndComboBox->setCurrentText(startText);
+}
+
+void MainWindow::selectionModeToggled(bool enabled)
+{
+    g_settings->preserveSelectionOnBackgroundClick = enabled;
 }
 
 
@@ -3020,6 +3026,7 @@ void MainWindow::setWidgetsFromSettings()
 
     ui->minDepthSpinBox->setValue(g_settings->minDepthRange);
     ui->maxDepthSpinBox->setValue(g_settings->maxDepthRange);
+    ui->selectionModeButton->setChecked(g_settings->preserveSelectionOnBackgroundClick);
 }
 
 
