@@ -11,6 +11,7 @@ Bandage is a GUI for viewing assembly graphs from *de novo* assemblers (e.g. Vel
   - **GAF** always available to record the walk.
 - **Selected-node path search**: from the Selection panel you can find paths that connect two chosen nodes within the selected-node set, inspect results in a tab, highlight paths on the graph, and export a single path to FASTA.
 - **Node context menu**: right-click a node to show its name, open its sequence in a tab, or set it as the Start/End for selected-node path search.
+- **Selection mode**: a toggle in "Find paths in selection" keeps current selections when clicking empty space, so you can inspect without accidentally clearing nodes/paths.
 
 ## Why it helps genome assembly work
 - Map multiple assemblies or reference genome onto the assembly graph to guide the consensus generation.
