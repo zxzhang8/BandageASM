@@ -1639,12 +1639,32 @@ bool AssemblyGraph::loadCSV(QString filename, QStringList * columns, QString * e
         return false;
     }
     headers.pop_front();
+    for (int i = 0; i < headers.size(); ++i)
+        headers[i] = headers[i].trimmed();
+    while (!headers.isEmpty() && headers.last().isEmpty())
+        headers.removeLast();
+
+    QStringList filteredHeaders;
+    QList<int> headerIndices;
+    for (int i = 0; i < headers.size(); ++i)
+    {
+        if (headers[i].isEmpty())
+            continue;
+        filteredHeaders.push_back(headers[i]);
+        headerIndices.push_back(i);
+    }
+
+    if (filteredHeaders.isEmpty())
+    {
+        *errormsg = "No CSV headers found after trimming.";
+        return false;
+    }
 
     //Check to see if any of the columns holds colour data.
     int colourCol = -1;
-    for (int i = 0; i < headers.size(); ++i)
+    for (int i = 0; i < filteredHeaders.size(); ++i)
     {
-        QString header = headers[i].toLower();
+        QString header = filteredHeaders[i].toLower();
         if (header == "colour" || header == "color")
         {
             colourCol = i;
@@ -1653,8 +1673,8 @@ bool AssemblyGraph::loadCSV(QString filename, QStringList * columns, QString * e
         }
     }
 
-    *columns = headers;
-    int columnCount = headers.size();
+    *columns = filteredHeaders;
+    int columnCount = filteredHeaders.size();
     QMap<QString, QColor> colourCategories;
     std::vector<QColor> presetColours = getPresetColours();
 
@@ -1670,15 +1690,26 @@ bool AssemblyGraph::loadCSV(QString filename, QStringList * columns, QString * e
         //Get rid of the node name - no need to save that.
         cols.pop_front();
 
+        QStringList filteredCols;
+        filteredCols.reserve(columnCount);
+        for (int i = 0; i < headerIndices.size(); ++i)
+        {
+            int index = headerIndices[i];
+            if (index < cols.size())
+                filteredCols.push_back(cols[index]);
+            else
+                filteredCols.push_back("");
+        }
+
         //If one of the columns holds colour data, get the colour from that one.
         //Acceptable colour formats: 6-digit hex colour (e.g. #FFB6C1), an 8-digit hex colour (e.g. #7FD2B48C) or a
         //standard colour name (e.g. skyblue).
         //If the colour value is something other than one of these, a colour will be assigned to the value.  That way
         //categorical names can be used and automatically given colours.
         QColor colour;
-        if (colourCol != -1 && cols.size() > colourCol)
+        if (colourCol != -1 && filteredCols.size() > colourCol)
         {
-            QString colourString = cols[colourCol];
+            QString colourString = filteredCols[colourCol];
             colour = QColor(colourString);
             if (!colour.isValid())
             {
@@ -1691,13 +1722,9 @@ bool AssemblyGraph::loadCSV(QString filename, QStringList * columns, QString * e
             }
         }
 
-        //Get rid of any extra data that doesn't have a header.
-        while (cols.size() > columnCount)
-            cols.pop_back();
-
         if (nodeName != "" && m_deBruijnGraphNodes.contains(nodeName))
         {
-            m_deBruijnGraphNodes[nodeName]->setCsvData(cols);
+            m_deBruijnGraphNodes[nodeName]->setCsvData(filteredCols);
             if (colour.isValid())
                 m_deBruijnGraphNodes[nodeName]->setCustomColour(colour);
         }
