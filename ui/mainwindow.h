@@ -20,6 +20,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QListWidgetItem>
 #include <QGraphicsScene>
 #include <QMap>
 #include <QString>
@@ -129,6 +130,8 @@ private:
 private slots:
     void loadGraph(QString fullFileName = "");
     void loadCSV(QString fullFileNAme = "");
+    void clearNodeAttributes();
+    void nodeAttributesItemChanged(QListWidgetItem * item);
     void selectionChanged();
     void graphScopeChanged();
     void drawGraph();

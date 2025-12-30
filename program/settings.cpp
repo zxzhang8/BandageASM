@@ -71,6 +71,8 @@ Settings::Settings()
     displayNodeDepth = false;
     displayNodeCsvData = false;
     displayNodeCsvDataCol = 0;
+    nodeAttributeHeaders.clear();
+    nodeAttributeColumns.clear();
     displayBlastHits = false;
     labelFont = QFont();
     textOutline = false;

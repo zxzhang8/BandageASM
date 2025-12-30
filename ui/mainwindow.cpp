@@ -180,6 +180,9 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->blastSearchButton, SIGNAL(clicked()), this, SLOT(openBlastSearchDialog()));
     connect(ui->blastQueryComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(blastQueryChanged()));
     connect(ui->gafLoadButton, SIGNAL(clicked()), this, SLOT(openGafPathsDialog()));
+    connect(ui->nodeAttributesLoadButton, SIGNAL(clicked()), this, SLOT(loadCSV()));
+    connect(ui->nodeAttributesClearButton, SIGNAL(clicked()), this, SLOT(clearNodeAttributes()));
+    connect(ui->nodeAttributesListWidget, SIGNAL(itemChanged(QListWidgetItem*)), this, SLOT(nodeAttributesItemChanged(QListWidgetItem*)));
     connect(ui->actionControls_panel, SIGNAL(toggled(bool)), this, SLOT(showHidePanels()));
     connect(ui->actionSelection_panel, SIGNAL(toggled(bool)), this, SLOT(showHidePanels()));
     connect(ui->contiguityButton, SIGNAL(clicked()), this, SLOT(determineContiguityFromSelectedNode()));
@@ -364,15 +367,22 @@ void MainWindow::cleanUp()
     ui->csvComboBox->clear();
     ui->csvComboBox->setEnabled(false);
     g_settings->displayNodeCsvDataCol = 0;
+    ui->nodeAttributesFileLabel->setText("Not loaded");
+    ui->nodeAttributesListWidget->blockSignals(true);
+    ui->nodeAttributesListWidget->clear();
+    ui->nodeAttributesListWidget->blockSignals(false);
+    ui->nodeAttributesClearButton->setEnabled(false);
+    g_settings->nodeAttributeHeaders.clear();
+    g_settings->nodeAttributeColumns.clear();
 }
 
 void MainWindow::loadCSV(QString fullFileName)
 {
-    QString selectedFilter = "Comma separated value (*.csv)";
+    QString selectedFilter = "CSV/TSV (*.csv *.tsv);;All files (*)";
     if (fullFileName == "")
     {
-        fullFileName = QFileDialog::getOpenFileName(this, "Load CSV", g_memory->rememberedPath,
-                                                    "Comma separated value (*.csv)",
+        fullFileName = QFileDialog::getOpenFileName(this, "Load CSV/TSV", g_memory->rememberedPath,
+                                                    "CSV/TSV (*.csv *.tsv);;All files (*)",
                                                     &selectedFilter);
     }
 
@@ -398,6 +408,19 @@ void MainWindow::loadCSV(QString fullFileName)
             ui->csvComboBox->clear();
             ui->csvComboBox->addItems(columns);
             g_settings->displayNodeCsvDataCol = 0;
+            ui->nodeAttributesFileLabel->setText(QFileInfo(fullFileName).fileName());
+            ui->nodeAttributesListWidget->blockSignals(true);
+            ui->nodeAttributesListWidget->clear();
+            for (int i = 0; i < columns.size(); ++i)
+            {
+                QListWidgetItem * item = new QListWidgetItem(columns[i], ui->nodeAttributesListWidget);
+                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+                item->setCheckState(Qt::Unchecked);
+            }
+            ui->nodeAttributesListWidget->blockSignals(false);
+            ui->nodeAttributesClearButton->setEnabled(true);
+            g_settings->nodeAttributeHeaders = columns;
+            g_settings->nodeAttributeColumns.clear();
             if (coloursLoaded)
             {
                 if (ui->coloursComboBox->currentIndex() != 6)
@@ -415,6 +438,47 @@ void MainWindow::loadCSV(QString fullFileName)
                                + fullFileName + "\n\n"
                                "Please verify that this file has the correct format.";
         QMessageBox::warning(this, errorTitle, errorMessage);
+    }
+}
+
+
+void MainWindow::clearNodeAttributes()
+{
+    g_assemblyGraph->clearAllCsvData();
+
+    ui->nodeAttributesFileLabel->setText("Not loaded");
+    ui->nodeAttributesListWidget->blockSignals(true);
+    ui->nodeAttributesListWidget->clear();
+    ui->nodeAttributesListWidget->blockSignals(false);
+    ui->nodeAttributesClearButton->setEnabled(false);
+
+    g_settings->nodeAttributeHeaders.clear();
+    g_settings->nodeAttributeColumns.clear();
+
+    ui->csvCheckBox->blockSignals(true);
+    ui->csvComboBox->blockSignals(true);
+    ui->csvCheckBox->setChecked(false);
+    ui->csvComboBox->clear();
+    ui->csvComboBox->setEnabled(false);
+    ui->csvCheckBox->blockSignals(false);
+    ui->csvComboBox->blockSignals(false);
+    g_settings->displayNodeCsvData = false;
+    g_settings->displayNodeCsvDataCol = 0;
+
+    g_graphicsView->viewport()->update();
+}
+
+
+void MainWindow::nodeAttributesItemChanged(QListWidgetItem * item)
+{
+    Q_UNUSED(item);
+
+    g_settings->nodeAttributeColumns.clear();
+    for (int i = 0; i < ui->nodeAttributesListWidget->count(); ++i)
+    {
+        QListWidgetItem * listItem = ui->nodeAttributesListWidget->item(i);
+        if (listItem->checkState() == Qt::Checked)
+            g_settings->nodeAttributeColumns.append(i);
     }
 }
 

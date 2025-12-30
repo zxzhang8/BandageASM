@@ -117,6 +117,24 @@ void MyGraphicsView::contextMenuEvent(QContextMenuEvent * event)
             readSupportText += "N/A";
         QAction * readSupportAction = menu.addAction(readSupportText);
         readSupportAction->setEnabled(false);
+        if (!g_settings->nodeAttributeColumns.isEmpty() && graphicsItemNode->m_deBruijnNode->hasCsvData())
+        {
+            QStringList csvData = graphicsItemNode->m_deBruijnNode->getAllCsvData();
+            for (int i = 0; i < g_settings->nodeAttributeColumns.size(); ++i)
+            {
+                int colIndex = g_settings->nodeAttributeColumns[i];
+                if (colIndex < 0 || colIndex >= csvData.size())
+                    continue;
+                QString value = csvData[colIndex];
+                if (value.isEmpty())
+                    continue;
+                QString header = g_settings->nodeAttributeHeaders.value(colIndex);
+                QString line = header.isEmpty() ? value : header + ": " + value;
+                QAction * attributeAction = menu.addAction(line);
+                attributeAction->setEnabled(false);
+            }
+            menu.addSeparator();
+        }
         QAction * startAction = menu.addAction("Set start");
         QAction * endAction = menu.addAction("Set end");
         menu.addSeparator();

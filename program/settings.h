@@ -21,8 +21,10 @@
 
 #include <QColor>
 #include <QFont>
+#include <QList>
 #include "globals.h"
 #include <QString>
+#include <QStringList>
 #include "../graph/path.h"
 #include "scinot.h"
 
@@ -122,6 +124,8 @@ public:
     bool displayNodeDepth;
     bool displayNodeCsvData;
     int  displayNodeCsvDataCol;
+    QStringList nodeAttributeHeaders;
+    QList<int> nodeAttributeColumns;
     bool displayBlastHits;
     QFont labelFont;
     bool textOutline;
