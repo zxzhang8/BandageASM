@@ -2375,6 +2375,8 @@ void MainWindow::selectUserSpecifiedNodes()
     //rectangle so the viewport can focus on the selected node.
     std::vector<QString> nodesNotFound;
     int foundNodes = 0;
+    bool haveTopZ = false;
+    double newZ = 0.0;
     for (size_t i = 0; i < nodesToSelect.size(); ++i)
     {
         GraphicsItemNode * graphicsItemNode = nodesToSelect[i]->getGraphicsItemNode();
@@ -2386,6 +2388,12 @@ void MainWindow::selectUserSpecifiedNodes()
 
         if (graphicsItemNode != 0)
         {
+            if (!haveTopZ)
+            {
+                newZ = m_scene->getTopZValue() + 1.0;
+                haveTopZ = true;
+            }
+            graphicsItemNode->setZValue(newZ);
             graphicsItemNode->setSelected(true);
             ++foundNodes;
         }

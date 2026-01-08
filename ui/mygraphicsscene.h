@@ -42,6 +42,9 @@ public:
     void setSceneRectangle();
     void possiblyExpandSceneRectangle(std::vector<GraphicsItemNode *> * movedNodes);
 
+protected:
+    void mousePressEvent(QGraphicsSceneMouseEvent * event);
+
 };
 
 #endif // MYGRAPHICSSCENE_H

@@ -18,6 +18,9 @@
 
 #include "mygraphicsscene.h"
 #include "../graph/debruijnnode.h"
+#include "../program/globals.h"
+#include <QGraphicsSceneMouseEvent>
+#include <QTransform>
 #include "../graph/debruijnedge.h"
 #include "../graph/graphicsitemnode.h"
 #include "../graph/graphicsitemedge.h"
@@ -249,5 +252,19 @@ void MyGraphicsScene::possiblyExpandSceneRectangle(std::vector<GraphicsItemNode 
 
     if (newSceneRect != currentSceneRect)
         setSceneRect(newSceneRect);
+}
+
+void MyGraphicsScene::mousePressEvent(QGraphicsSceneMouseEvent * event)
+{
+    if (g_settings->preserveSelectionOnBackgroundClick &&
+        event->button() == Qt::LeftButton &&
+        !(event->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier)))
+    {
+        QGraphicsItem * item = itemAt(event->scenePos(), QTransform());
+        if (item != 0 && (item->flags() & QGraphicsItem::ItemIsSelectable))
+            event->setModifiers(event->modifiers() | Qt::ControlModifier);
+    }
+
+    QGraphicsScene::mousePressEvent(event);
 }
 
