@@ -111,12 +111,6 @@ private:
     void updateSelectedNodesPathControls(const std::vector<DeBruijnNode *> &selectedNodes);
     Path makePathFromSelectedEdges(QString * errorMessage, QStringList * errorDetails) const;
     void showSelectedEdgePathTab(const Path &path);
-    QList<Path> findPathsWithinSelection(DeBruijnNode * startNode,
-                                         DeBruijnNode * endNode,
-                                         const QSet<DeBruijnNode *> &allowedNodes,
-                                         int maxNodes,
-                                         int maxPaths,
-                                         bool * hitLimit) const;
     void showSelectedNodesPathsTab(const QList<Path> &paths);
     void setStartingNodesWidgetVisibility(bool visible);
     void setNodeDistanceWidgetVisibility(bool visible);

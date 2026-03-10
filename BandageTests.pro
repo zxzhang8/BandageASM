@@ -31,6 +31,7 @@ INCLUDEPATH += ui
 
 SOURCES += \
     program/settings.cpp \
+    program/pathsearch.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
     graph/debruijnnode.cpp \
@@ -122,6 +123,7 @@ SOURCES += \
 
 HEADERS  += \
     program/settings.h \
+    program/pathsearch.h \
     program/globals.h \
     program/graphlayoutworker.h \
     graph/debruijnnode.h \

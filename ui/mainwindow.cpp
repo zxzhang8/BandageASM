@@ -64,6 +64,7 @@
 #include "../program/memory.h"
 #include "gafpathsdialog.h"
 #include "../program/gafparser.h"
+#include "../program/pathsearch.h"
 #include "changenodenamedialog.h"
 #include "changenodedepthdialog.h"
 #include <limits>
@@ -75,7 +76,6 @@
 #include <QQueue>
 #include <QSet>
 #include <QSignalBlocker>
-#include <functional>
 #include <QCompleter>
 
 MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
@@ -119,6 +119,9 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     //so fix them at a smaller height.
     ui->selectedNodesTextEdit->setFixedHeight(ui->selectedNodesTextEdit->sizeHint().height() / 2.5);
     ui->selectedEdgesTextEdit->setFixedHeight(ui->selectedEdgesTextEdit->sizeHint().height() / 2.5);
+    ui->selectedNodesPathModeComboBox->setCurrentIndex(0);
+    ui->selectedNodesPathModeComboBox->setToolTip("Top-K (fast): returns highest-scoring paths quickly. "
+                                                  "Enumerate all: exhaustive search with limits.");
 
     setUiState(NO_GRAPH_LOADED);
 
@@ -926,57 +929,51 @@ void MainWindow::findPathsInSelectedNodes()
     }
 
     const int maxNodes = std::max<int>(2, ui->selectedNodesPathMaxNodesSpinBox->value());
-    const int maxPaths = 1000;
-    bool hitLimit = false;
-    QList<Path> paths;
-    QSet<QString> seenPaths;
+    PathSearchRequest request;
+    request.allowedNodes = allowedNodes;
+    request.startNodes = startNodes;
+    request.endNodes = endNodes;
+    request.maxNodes = maxNodes;
+    request.topK = 200;
+    request.maxPaths = 10000;
+    request.timeoutMs = 5000;
+    request.mode = (ui->selectedNodesPathModeComboBox->currentIndex() == 1)
+                   ? PATH_SEARCH_ENUMERATE_ALL
+                   : PATH_SEARCH_TOP_K;
 
-    for (int s = 0; s < startNodes.size(); ++s)
-    {
-        for (int e = 0; e < endNodes.size(); ++e)
-        {
-            int remaining = maxPaths - paths.size();
-            if (remaining <= 0)
-            {
-                hitLimit = true;
-                break;
-            }
-
-            bool localLimit = false;
-            QList<Path> newPaths = findPathsWithinSelection(startNodes[s], endNodes[e], allowedNodes,
-                                                            maxNodes, remaining, &localLimit);
-            for (int i = 0; i < newPaths.size(); ++i)
-            {
-                QString key = newPaths[i].getString(true);
-                if (!seenPaths.contains(key))
-                {
-                    seenPaths.insert(key);
-                    paths.push_back(newPaths[i]);
-                }
-            }
-
-            if (localLimit)
-                hitLimit = true;
-        }
-
-        if (hitLimit && paths.size() >= maxPaths)
-            break;
-    }
+    PathSearchResult searchResult = PathSearchEngine::search(request);
+    QList<Path> paths = searchResult.paths;
 
     if (paths.isEmpty())
     {
-        QMessageBox::information(this, "No paths found",
-                                 "No paths connect the selected start and end nodes within the selected set.");
+        QString msg = "No paths connect the selected start and end nodes within the selected set.";
+        if (searchResult.stats.hitTimeout)
+            msg += "\n\nSearch timed out before finding a result.";
+        QMessageBox::information(this, "No paths found", msg);
         return;
     }
 
     showSelectedNodesPathsTab(paths);
 
-    if (hitLimit)
+    if (searchResult.stats.hitPathLimit || searchResult.stats.hitTimeout)
     {
-        QMessageBox::information(this, "Path limit reached",
-                                 "The maximum number of paths was reached. Showing the first "
-                                 + QString::number(maxPaths) + " paths.");
+        QStringList notes;
+        if (searchResult.stats.hitPathLimit)
+        {
+            if (request.mode == PATH_SEARCH_TOP_K)
+                notes << ("Reached Top-K limit (" + QString::number(request.topK) + ").");
+            else
+                notes << ("Reached path cap (" + QString::number(request.maxPaths) + ").");
+        }
+        if (searchResult.stats.hitTimeout)
+            notes << ("Search timed out after " + QString::number(request.timeoutMs) + " ms.");
+
+        notes << ("Expanded states: " + QString::number(searchResult.stats.expandedStates));
+        notes << ("Reachability prunes: " + QString::number(searchResult.stats.prunedByReachability));
+        notes << ("Depth prunes: " + QString::number(searchResult.stats.prunedByDepth));
+        notes << ("Bound prunes: " + QString::number(searchResult.stats.prunedByBound));
+
+        QMessageBox::information(this, "Search limits reached", notes.join("\n"));
     }
 }
 
@@ -1125,6 +1122,7 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     QSignalBlocker blockStart(ui->selectedNodesPathStartComboBox);
     QSignalBlocker blockEnd(ui->selectedNodesPathEndComboBox);
     QSignalBlocker blockMaxNodes(ui->selectedNodesPathMaxNodesSpinBox);
+    QSignalBlocker blockMode(ui->selectedNodesPathModeComboBox);
 
     QString currentStartName = ui->selectedNodesPathStartComboBox->currentData().toString();
     QString currentEndName = ui->selectedNodesPathEndComboBox->currentData().toString();
@@ -1150,6 +1148,7 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     ui->selectedNodesFindPathsButton->setEnabled(enable);
     ui->selectedNodesPathReverseButton->setEnabled(enable);
     ui->selectedNodesPathMaxNodesSpinBox->setEnabled(enable);
+    ui->selectedNodesPathModeComboBox->setEnabled(enable);
 
     if (!enable)
         return;
@@ -1179,69 +1178,6 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     else if (baseNames.size() > 1)
         ui->selectedNodesPathEndComboBox->setCurrentIndex(1);
 
-}
-
-QList<Path> MainWindow::findPathsWithinSelection(DeBruijnNode * startNode,
-                                                 DeBruijnNode * endNode,
-                                                 const QSet<DeBruijnNode *> &allowedNodes,
-                                                 int maxNodes,
-                                                 int maxPaths,
-                                                 bool * hitLimit) const
-{
-    QList<Path> results;
-    if (hitLimit != 0)
-        *hitLimit = false;
-    if (startNode == 0 || endNode == 0)
-        return results;
-    if (maxPaths <= 0)
-        return results;
-
-    QList<DeBruijnNode *> currentNodes;
-    QSet<DeBruijnNode *> visited;
-
-    currentNodes.append(startNode);
-    visited.insert(startNode);
-
-    std::function<void(DeBruijnNode *)> dfs = [&](DeBruijnNode * node)
-    {
-        if (hitLimit != 0 && *hitLimit)
-            return;
-
-        if (currentNodes.size() > maxNodes)
-            return;
-
-        if (node == endNode)
-        {
-            Path path = Path::makeFromOrderedNodes(currentNodes, false);
-            if (!path.isEmpty())
-                results.push_back(path);
-            if (results.size() >= maxPaths && hitLimit != 0)
-                *hitLimit = true;
-            return;
-        }
-
-        std::vector<DeBruijnEdge *> edges = node->getLeavingEdges();
-        for (size_t i = 0; i < edges.size(); ++i)
-        {
-            DeBruijnNode * nextNode = edges[i]->getEndingNode();
-            if (!allowedNodes.contains(nextNode))
-                continue;
-            if (visited.contains(nextNode))
-                continue;
-
-            visited.insert(nextNode);
-            currentNodes.append(nextNode);
-            dfs(nextNode);
-            currentNodes.removeLast();
-            visited.remove(nextNode);
-
-            if (hitLimit != 0 && *hitLimit)
-                return;
-        }
-    };
-
-    dfs(startNode);
-    return results;
 }
 
 Path MainWindow::makePathFromSelectedEdges(QString * errorMessage, QStringList * errorDetails) const
