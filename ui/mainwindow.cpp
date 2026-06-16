@@ -220,6 +220,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->actionSave_entire_graph_to_FASTA_only_positive_nodes, SIGNAL(triggered(bool)), this, SLOT(saveEntireGraphToFastaOnlyPositiveNodes()));
     connect(ui->actionSave_entire_graph_to_GFA, SIGNAL(triggered(bool)), this, SLOT(saveEntireGraphToGfa()));
     connect(ui->actionSave_visible_graph_to_GFA, SIGNAL(triggered(bool)), this, SLOT(saveVisibleGraphToGfa()));
+    connect(ui->actionSave_selected_subgraph_to_GFA, SIGNAL(triggered(bool)), this, SLOT(saveSelectedSubgraphToGfa()));
     connect(ui->actionWeb_BLAST_selected_nodes, SIGNAL(triggered(bool)), this, SLOT(webBlastSelectedNodes()));
     connect(ui->actionHide_selected_nodes, SIGNAL(triggered(bool)), this, SLOT(hideNodes()));
     connect(ui->actionRemove_selection_from_graph, SIGNAL(triggered(bool)), this, SLOT(removeSelection()));
@@ -385,11 +386,12 @@ void MainWindow::cleanUp()
 
 void MainWindow::loadCSV(QString fullFileName)
 {
-    QString selectedFilter = "CSV/TSV (*.csv *.tsv);;All files (*)";
+    QString selectedFilter = "CSV/TSV/Text (*.csv *.tsv *.txt);;All files (*)";
+    QString dialogTitle = "Load node attributes/colours";
     if (fullFileName == "")
     {
-        fullFileName = QFileDialog::getOpenFileName(this, "Load CSV/TSV", g_memory->rememberedPath,
-                                                    "CSV/TSV (*.csv *.tsv);;All files (*)",
+        fullFileName = QFileDialog::getOpenFileName(this, dialogTitle, g_memory->rememberedPath,
+                                                    "CSV/TSV/Text (*.csv *.tsv *.txt);;All files (*)",
                                                     &selectedFilter);
     }
 
@@ -401,33 +403,46 @@ void MainWindow::loadCSV(QString fullFileName)
 
     try
     {
-        MyProgressDialog progress(this, "Loading CSV...", false);
+        MyProgressDialog progress(this, "Loading node attributes/colours...", false);
         progress.setWindowModality(Qt::WindowModal);
         progress.show();
 
         bool coloursLoaded = false;
-        bool success = g_assemblyGraph->loadCSV(fullFileName, &columns, &errormsg, &coloursLoaded);
+        bool success = false;
+        bool loadCustomColoursFile = QFileInfo(fullFileName).suffix().compare("txt", Qt::CaseInsensitive) == 0;
+
+        if (loadCustomColoursFile)
+        {
+            int unmatchedNodes = 0;
+            success = g_assemblyGraph->loadCustomColours(fullFileName, &errormsg, &unmatchedNodes);
+            coloursLoaded = success;
+        }
+        else
+            success = g_assemblyGraph->loadCSV(fullFileName, &columns, &errormsg, &coloursLoaded);
 
         if (success)
         {
-            ui->csvCheckBox->setChecked(true);
-            ui->csvComboBox->setEnabled(true);
-            ui->csvComboBox->clear();
-            ui->csvComboBox->addItems(columns);
-            g_settings->displayNodeCsvDataCol = 0;
-            ui->nodeAttributesFileLabel->setText(QFileInfo(fullFileName).fileName());
-            ui->nodeAttributesListWidget->blockSignals(true);
-            ui->nodeAttributesListWidget->clear();
-            for (int i = 0; i < columns.size(); ++i)
+            if (!loadCustomColoursFile)
             {
-                QListWidgetItem * item = new QListWidgetItem(columns[i], ui->nodeAttributesListWidget);
-                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-                item->setCheckState(Qt::Unchecked);
+                ui->csvCheckBox->setChecked(true);
+                ui->csvComboBox->setEnabled(true);
+                ui->csvComboBox->clear();
+                ui->csvComboBox->addItems(columns);
+                g_settings->displayNodeCsvDataCol = 0;
+                ui->nodeAttributesFileLabel->setText(QFileInfo(fullFileName).fileName());
+                ui->nodeAttributesListWidget->blockSignals(true);
+                ui->nodeAttributesListWidget->clear();
+                for (int i = 0; i < columns.size(); ++i)
+                {
+                    QListWidgetItem * item = new QListWidgetItem(columns[i], ui->nodeAttributesListWidget);
+                    item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+                    item->setCheckState(Qt::Unchecked);
+                }
+                ui->nodeAttributesListWidget->blockSignals(false);
+                ui->nodeAttributesClearButton->setEnabled(true);
+                g_settings->nodeAttributeHeaders = columns;
+                g_settings->nodeAttributeColumns.clear();
             }
-            ui->nodeAttributesListWidget->blockSignals(false);
-            ui->nodeAttributesClearButton->setEnabled(true);
-            g_settings->nodeAttributeHeaders = columns;
-            g_settings->nodeAttributeColumns.clear();
             if (coloursLoaded)
             {
                 if (ui->coloursComboBox->currentIndex() != 6)
@@ -440,7 +455,7 @@ void MainWindow::loadCSV(QString fullFileName)
 
     catch (...)
     {
-        QString errorTitle = "Error loading CSV";
+        QString errorTitle = "Error loading node attributes/colours";
         QString errorMessage = "There was an error when attempting to load:\n"
                                + fullFileName + "\n\n"
                                "Please verify that this file has the correct format.";
@@ -3309,6 +3324,28 @@ void MainWindow::saveVisibleGraphToGfa()
     {
         g_memory->rememberedPath = QFileInfo(fullFileName).absolutePath();
         bool success = g_assemblyGraph->saveVisibleGraphToGfa(fullFileName);
+        if (!success)
+            QMessageBox::warning(this, "Error saving file", "Bandage was unable to save the graph file.");
+    }
+}
+
+void MainWindow::saveSelectedSubgraphToGfa()
+{
+    std::vector<DeBruijnNode *> selectedNodes = m_scene->getSelectedNodes();
+    if (selectedNodes.size() == 0)
+    {
+        QMessageBox::information(this, "Save selected subgraph to GFA", "No nodes are selected.\n\n"
+                                                                       "You must first select nodes in the graph before you can save a selected subgraph.");
+        return;
+    }
+
+    QString defaultFileNameAndPath = g_memory->rememberedPath + "/selected_subgraph.gfa";
+    QString fullFileName = QFileDialog::getSaveFileName(this, "Save selected subgraph", defaultFileNameAndPath, "GFA (*.gfa)");
+
+    if (fullFileName != "") //User did not hit cancel
+    {
+        g_memory->rememberedPath = QFileInfo(fullFileName).absolutePath();
+        bool success = g_assemblyGraph->saveSelectedSubgraphToGfa(fullFileName, selectedNodes);
         if (!success)
             QMessageBox::warning(this, "Error saving file", "Bandage was unable to save the graph file.");
     }

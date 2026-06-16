@@ -45,7 +45,8 @@ DeBruijnNode::DeBruijnNode(QString name, double depth, QByteArray sequence, int 
     m_specialNode(false),
     m_drawn(false),
     m_highestDistanceInNeighbourSearch(0),
-    m_csvData()
+    m_csvData(),
+    m_gfaExtraSegmentTags()
 {
     if (length > 0)
         m_length = length;
@@ -368,6 +369,15 @@ QByteArray DeBruijnNode::getGfaSegmentLine(QString depthTag) const
     QByteArray gfaSegmentLine = "S";
     gfaSegmentLine += "\t" + getNameWithoutSign().toUtf8();
     gfaSegmentLine += "\t" + gfaSequence;
+
+    if (!m_gfaExtraSegmentTags.isEmpty())
+    {
+        for (int i = 0; i < m_gfaExtraSegmentTags.size(); ++i)
+            gfaSegmentLine += "\t" + m_gfaExtraSegmentTags[i].toUtf8();
+        gfaSegmentLine += "\n";
+        return gfaSegmentLine;
+    }
+
     gfaSegmentLine += "\tLN:i:" + QString::number(gfaSequence.length()).toUtf8();
 
     //We use the depthTag to guide how we save the node depth.
@@ -817,16 +827,8 @@ void DeBruijnNode::setCustomLabel(QString newLabel)
 QStringList DeBruijnNode::getCustomLabelForDisplay() const
 {
     QStringList customLabelLines;
-    if (!getCustomLabel().isEmpty()) {
-        QStringList labelLines = getCustomLabel().split("\\n");
-        for (int i = 0; i < labelLines.size(); ++i)
-            customLabelLines << labelLines[i];
-    }
-    if (!g_settings->doubleMode && !m_reverseComplement->getCustomLabel().isEmpty()) {
-        QStringList labelLines2 = m_reverseComplement->getCustomLabel().split("\n");
-        for (int i = 0; i < labelLines2.size(); ++i)
-            customLabelLines << labelLines2[i];
-    }
+    if (!getCustomLabel().isEmpty())
+        customLabelLines = getCustomLabel().split("\\n");
     return customLabelLines;
 }
 

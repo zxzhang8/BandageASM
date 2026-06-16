@@ -111,6 +111,7 @@ public:
 
     QStringList splitCsv(QString line, QString sep=",");
     bool loadCSV(QString filename, QStringList * columns, QString * errormsg, bool * coloursLoaded);
+    bool loadCustomColours(QString filename, QString * errormsg, int * unmatchedNodes);
     bool loadNodeLabels(QString filename, QString * errormsg, int * unmatchedNodes);
     std::vector<DeBruijnNode *> getStartingNodes(QString * errorTitle,
                                                  QString * errorMessage,
@@ -155,6 +156,7 @@ public:
     void saveEntireGraphToFastaOnlyPositiveNodes(QString filename);
     bool saveEntireGraphToGfa(QString filename);
     bool saveVisibleGraphToGfa(QString filename);
+    bool saveSelectedSubgraphToGfa(QString filename, std::vector<DeBruijnNode *> selectedNodes);
     void changeNodeName(QString oldName, QString newName);
     NodeNameStatus checkNodeNameValidity(QString nodeName);
     void changeNodeDepth(std::vector<DeBruijnNode *> * nodes,

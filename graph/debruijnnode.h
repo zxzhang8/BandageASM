@@ -94,6 +94,7 @@ public:
     bool hasCsvData() const {return !m_csvData.isEmpty();}
     QStringList getAllCsvData() const {return m_csvData;}
     QString getCsvLine(int i) const {if (i < m_csvData.length()) return m_csvData[i]; else return "";}
+    QStringList getGfaExtraSegmentTags() const {return m_gfaExtraSegmentTags;}
     bool isInDepthRange(double min, double max) const;
     bool sequenceIsMissing() const;
     DeBruijnEdge *getSelfLoopingEdge() const;
@@ -126,6 +127,7 @@ public:
     void labelNeighbouringNodesAsDrawn(int nodeDistance, DeBruijnNode * callingNode);
     void setCsvData(QStringList csvData) {m_csvData = csvData;}
     void clearCsvData() {m_csvData.clear();}
+    void setGfaExtraSegmentTags(QStringList tags) {m_gfaExtraSegmentTags = tags;}
     void setDepth(double newDepth) {m_depth = newDepth;}
     void setReadSupportCount(long long newCount) {m_readSupportCount = newCount;}
     void setName(QString newName) {m_name = newName;}
@@ -149,6 +151,7 @@ private:
     QString m_customLabel;
     std::vector<BlastHit *> m_blastHits;
     QStringList m_csvData;
+    QStringList m_gfaExtraSegmentTags;
     QString getNodeNameForFasta(bool sign) const;
     QByteArray getUpstreamSequence(int upstreamSequenceLength) const;
 

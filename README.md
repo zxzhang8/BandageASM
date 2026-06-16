@@ -18,3 +18,20 @@ BandageASM is a GUI for viewing assembly graphs. It draws contigs as nodes with 
 - Turn highlighted graph walks into reusable sequences/paths for polishing, validation, or downstream comparison.
 
 For the full original documentation and releases, please see the original Bandage project.
+
+## Windows deployment
+If you build with Qt 6.10.1 MinGW 64-bit, do not distribute only `Bandage.exe`. The executable depends on Qt DLLs, platform plugins, and MinGW runtime libraries that must be packaged together.
+
+After building the Release target on Windows, run:
+
+```bat
+build_scripts\deploy_windows_qt6_mingw64.bat
+```
+
+The script:
+- copies `build\Desktop_Qt_6_10_1_MinGW_64_bit-Release\release\Bandage.exe` into a clean distribution folder
+- runs `windeployqt --release --compiler-runtime`
+- copies common MinGW runtime DLLs if needed
+- creates `Bandage_Windows_Qt6_MinGW64.zip`
+
+Distribute the generated zip and ask users to extract the full archive before running `Bandage.exe`.

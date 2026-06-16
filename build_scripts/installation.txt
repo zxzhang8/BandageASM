@@ -1,1 +1,3 @@
-Bandage requires the Visual C++ Redistributable for Visual Studio 2015. If you do not have this already installed, you will get an error message when attempting to run Bandage.exe. In this case, you must first run vcredist_x64.exe to install the required libraries.
+Bandage.exe in this package is deployed for Qt 6.10.1 MinGW 64-bit and should run after extracting the zip on a 64-bit Windows machine.
+
+If Bandage does not start, make sure you extracted the entire archive and kept the bundled DLLs and plugin folders next to Bandage.exe.

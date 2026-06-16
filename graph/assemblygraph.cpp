@@ -630,8 +630,10 @@ void AssemblyGraph::buildDeBruijnGraphFromGfa(QString fullFileName, bool *unsupp
                 int ln = 0;
                 QString lb, l2;
                 QColor cl, c2;
+                QStringList extraSegmentTags;
                 for (int i = 3; i < lineParts.size(); ++i) {
                     QString part = lineParts.at(i);
+                    extraSegmentTags.push_back(part);
                     if (part.size() < 6)
                         continue;
                     if (part.at(2) != ':')
@@ -744,6 +746,7 @@ void AssemblyGraph::buildDeBruijnGraphFromGfa(QString fullFileName, bool *unsupp
                 }
 
                 DeBruijnNode * node = new DeBruijnNode(nodeName, nodeDepth, sequence, length);
+                node->setGfaExtraSegmentTags(extraSegmentTags);
                 if (rdFound)
                     node->setReadSupportCount(rd);
                 m_deBruijnGraphNodes.insert(nodeName, node);
@@ -1734,6 +1737,78 @@ bool AssemblyGraph::loadCSV(QString filename, QStringList * columns, QString * e
 
     if (unmatched_nodes)
         *errormsg = "There were " + QString::number(unmatched_nodes) + " unmatched entries in the CSV.";
+
+    return true;
+}
+
+bool AssemblyGraph::loadCustomColours(QString filename, QString * errormsg, int * unmatchedNodes)
+{
+    if (unmatchedNodes)
+        *unmatchedNodes = 0;
+    if (errormsg)
+        errormsg->clear();
+
+    QFile inputFile(filename);
+    if (!inputFile.open(QIODevice::ReadOnly))
+    {
+        if (errormsg)
+            *errormsg = "Unable to read from specified file.";
+        return false;
+    }
+
+    QMapIterator<QString, DeBruijnNode *> existingNodeIterator(m_deBruijnGraphNodes);
+    while (existingNodeIterator.hasNext())
+    {
+        existingNodeIterator.next();
+        existingNodeIterator.value()->setCustomColour(QColor());
+    }
+
+    QTextStream in(&inputFile);
+    int unmatched = 0;
+
+    while (!in.atEnd())
+    {
+        QApplication::processEvents();
+
+        QString line = in.readLine();
+        if (line.trimmed().isEmpty())
+            continue;
+
+        int tabIndex = line.indexOf("\t");
+        if (tabIndex == -1)
+        {
+            if (errormsg)
+                *errormsg = "Invalid custom colour file format.";
+            return false;
+        }
+
+        QString colourString = line.left(tabIndex).trimmed();
+        QColor colour(colourString);
+        if (!colour.isValid())
+        {
+            if (errormsg)
+                *errormsg = "Invalid colour in custom colour file: " + colourString;
+            return false;
+        }
+
+        QStringList nodeStrings = line.mid(tabIndex + 1).split(",", Qt::SkipEmptyParts);
+        for (int i = 0; i < nodeStrings.size(); ++i)
+        {
+            QString nodeName = getNodeNameFromString(nodeStrings[i].trimmed());
+            if (nodeName.isEmpty() || !m_deBruijnGraphNodes.contains(nodeName))
+            {
+                ++unmatched;
+                continue;
+            }
+
+            m_deBruijnGraphNodes[nodeName]->setCustomColour(colour);
+        }
+    }
+
+    if (unmatched > 0 && errormsg)
+        *errormsg = "There were " + QString::number(unmatched) + " unmatched entries in the custom colour file.";
+    if (unmatchedNodes)
+        *unmatchedNodes = unmatched;
 
     return true;
 }
@@ -3443,6 +3518,71 @@ bool AssemblyGraph::saveVisibleGraphToGfa(QString filename)
                 edge->getEndingNode()->thisNodeOrReverseComplementIsDrawn() &&
                 edge->isPositiveEdge())
             edgesToSave.push_back(edge);
+    }
+
+    std::sort(edgesToSave.begin(), edgesToSave.end(), DeBruijnEdge::compareEdgePointers);
+
+    for (int i = 0; i < edgesToSave.size(); ++i)
+        out << edgesToSave[i]->getGfaLinkLine();
+
+    return true;
+}
+
+bool AssemblyGraph::saveSelectedSubgraphToGfa(QString filename, std::vector<DeBruijnNode *> selectedNodes)
+{
+    QFile file(filename);
+    bool success = file.open(QIODevice::WriteOnly | QIODevice::Text);
+    if (!success)
+        return false;
+
+    QSet<DeBruijnNode *> selectedNodesSet;
+    QSet<DeBruijnNode *> selectedPositiveNodes;
+    for (size_t i = 0; i < selectedNodes.size(); ++i)
+    {
+        DeBruijnNode * node = selectedNodes[i];
+        selectedNodesSet.insert(node);
+        if (node->isNegativeNode())
+            node = node->getReverseComplement();
+        selectedPositiveNodes.insert(node);
+    }
+
+    QTextStream out(&file);
+
+    QMapIterator<QString, DeBruijnNode*> i(m_deBruijnGraphNodes);
+    while (i.hasNext())
+    {
+        i.next();
+        DeBruijnNode * node = i.value();
+        if (node->isPositiveNode() && selectedPositiveNodes.contains(node))
+            out << node->getGfaSegmentLine(m_depthTag);
+    }
+
+    QList<DeBruijnEdge*> edgesToSave;
+    QMapIterator<QPair<DeBruijnNode*, DeBruijnNode*>, DeBruijnEdge*> j(m_deBruijnGraphEdges);
+    while (j.hasNext())
+    {
+        j.next();
+        DeBruijnEdge * edge = j.value();
+        if (g_settings->doubleMode)
+        {
+            if (selectedNodesSet.contains(edge->getStartingNode()) &&
+                    selectedNodesSet.contains(edge->getEndingNode()))
+                edgesToSave.push_back(edge);
+        }
+        else
+        {
+            DeBruijnNode * startingNode = edge->getStartingNode();
+            DeBruijnNode * endingNode = edge->getEndingNode();
+            if (startingNode->isNegativeNode())
+                startingNode = startingNode->getReverseComplement();
+            if (endingNode->isNegativeNode())
+                endingNode = endingNode->getReverseComplement();
+
+            if (selectedPositiveNodes.contains(startingNode) &&
+                    selectedPositiveNodes.contains(endingNode) &&
+                    edge->isPositiveEdge())
+                edgesToSave.push_back(edge);
+        }
     }
 
     std::sort(edgesToSave.begin(), edgesToSave.end(), DeBruijnEdge::compareEdgePointers);

@@ -45,12 +45,14 @@ private slots:
     void graphLocationFunctions();
     void loadCsvData();
     void loadCsvDataTrinity();
+    void loadCustomColours();
     void blastSearch();
     void blastSearchFilters();
     void graphScope();
     void commandLineSettings();
     void sciNotComparisons();
     void graphEdits();
+    void customLabelsDisplay();
     void velvetToGfa();
     void spadesToGfa();
     void mergeNodesOnGfa();
@@ -420,6 +422,26 @@ void BandageTests::loadCsvDataTrinity()
     QCOMPARE(node3923Plus->getCsvLine(0), QString("3923PLUS"));
     QCOMPARE(node3924Plus->getCsvLine(0), QString("3924PLUS"));
     QCOMPARE(node3940Plus->getCsvLine(0), QString("3940PLUS"));
+}
+
+void BandageTests::loadCustomColours()
+{
+    createGlobals();
+    g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test.fastg");
+
+    QString errormsg;
+    int unmatchedNodes = 0;
+    bool success = g_assemblyGraph->loadCustomColours(getTestDirectory() + "custom_colours.txt",
+                                                      &errormsg, &unmatchedNodes);
+
+    QCOMPARE(success, true);
+    QCOMPARE(unmatchedNodes, 1);
+    QCOMPARE(errormsg, QString("There were 1 unmatched entries in the custom colour file."));
+    QCOMPARE(g_assemblyGraph->m_deBruijnGraphNodes["6+"]->getCustomColour(), QColor("red"));
+    QCOMPARE(g_assemblyGraph->m_deBruijnGraphNodes["6-"]->getCustomColour(), QColor("red"));
+    QCOMPARE(g_assemblyGraph->m_deBruijnGraphNodes["4+"]->getCustomColour(), QColor("#00FF00"));
+    QCOMPARE(g_assemblyGraph->m_deBruijnGraphNodes["4-"]->getCustomColour(), QColor("#00FF00"));
+    QCOMPARE(g_assemblyGraph->m_deBruijnGraphNodes["3+"]->hasCustomColour(), false);
 }
 
 void BandageTests::blastSearch()
@@ -1082,6 +1104,28 @@ void BandageTests::graphEdits()
 
     DeBruijnNode * mergedNode = g_assemblyGraph->m_deBruijnGraphNodes["6_26_copy_23_26_24+"];
     QCOMPARE(pathSequence, mergedNode->getSequence());
+}
+
+
+void BandageTests::customLabelsDisplay()
+{
+    createGlobals();
+
+    DeBruijnNode nodePlus("1+", 1.0, "ACGT");
+    DeBruijnNode nodeMinus("1-", 1.0, "ACGT");
+    nodePlus.setReverseComplement(&nodeMinus);
+    nodeMinus.setReverseComplement(&nodePlus);
+
+    nodePlus.setCustomLabel("plus-line-1\\nplus-line-2");
+    nodeMinus.setCustomLabel("minus-line");
+
+    g_settings->doubleMode = false;
+    QCOMPARE(nodePlus.getCustomLabelForDisplay(), QStringList() << "plus-line-1" << "plus-line-2");
+    QCOMPARE(nodeMinus.getCustomLabelForDisplay(), QStringList() << "minus-line");
+
+    g_settings->doubleMode = true;
+    QCOMPARE(nodePlus.getCustomLabelForDisplay(), QStringList() << "plus-line-1" << "plus-line-2");
+    QCOMPARE(nodeMinus.getCustomLabelForDisplay(), QStringList() << "minus-line");
 }
 
 
