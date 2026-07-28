@@ -32,6 +32,7 @@ INCLUDEPATH += ui
 SOURCES += \
     program/settings.cpp \
     program/pathsearch.cpp \
+    program/gafparser.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
     graph/debruijnnode.cpp \
@@ -119,11 +120,16 @@ SOURCES += \
     ogdf/internal/energybased/MultilevelGraph.cpp \
     ui/graphinfodialog.cpp \
     ui/tablewidgetitemname.cpp \
-    ui/nodesequencewidget.cpp
+    ui/nodesequencewidget.cpp \
+    ui/gafpathsdialog.cpp \
+    ui/selectededgepathwidget.cpp \
+    ui/selectednodespathswidget.cpp
 
 HEADERS  += \
+    tests/bandagetests.h \
     program/settings.h \
     program/pathsearch.h \
+    program/gafparser.h \
     program/globals.h \
     program/graphlayoutworker.h \
     graph/debruijnnode.h \
@@ -244,7 +250,10 @@ HEADERS  += \
     ogdf/internal/energybased/MultilevelGraph.h \
     ui/graphinfodialog.h \
     ui/tablewidgetitemname.h \
-    ui/nodesequencewidget.h
+    ui/nodesequencewidget.h \
+    ui/gafpathsdialog.h \
+    ui/selectededgepathwidget.h \
+    ui/selectednodespathswidget.h
 
 FORMS    += \
     ui/mainwindow.ui \

@@ -4,7 +4,7 @@
 BandageASM is a GUI for viewing assembly graphs. It draws contigs as nodes with their connections, lets you label/colour/move nodes, and extract sequences directly from the graph. More info and binaries live upstream: https://github.com/rrwick/Bandage and http://rrwick.github.io/Bandage/.
 
 ## Fork additions
-- **GAF path visualisation**: import `.gaf` files, list alignments in their own tab, inspect details, and highlight the corresponding paths on the drawn graph.
+- **GAF path visualisation**: import `.gaf` files, list alignments in their own tab, inspect details, and highlight the corresponding paths on the drawn graph. One GAF tab is kept at a time; loading another valid file asks before replacement and defaults to keeping the current file. Invalid imports leave the current GAF state unchanged. GAF highlighting remains visible when switching tabs until another path source replaces it, a new graph is loaded, or **Clear highlighting** is used.
 - **GAF paths performance**: the GAF tab now uses a paged table view with configurable page size and direct page jump, plus multi-node filtering with Any/All matching.
 - **Selected-edge Gen Seq**: when edges are selected, a **Gen Seq** button appears to validate that they form one unambiguous path; errors report branching/disconnected nodes. For valid paths, a tab shows the ordered walk with exports:
   - **FASTA** if all nodes have sequence.

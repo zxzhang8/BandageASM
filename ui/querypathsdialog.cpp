@@ -39,7 +39,6 @@ QueryPathsDialog::QueryPathsDialog(QWidget * parent, BlastQuery * query) :
     connect(ui->tableWidget, SIGNAL(itemSelectionChanged()), this, SLOT(tableSelectionChanged()));
 
     g_memory->queryPathDialogIsVisible = true;
-    g_memory->queryPaths.clear();
 
     ui->tableWidget->setHorizontalHeaderLabels(QStringList() << "Path" << "Length\n(bp)" << "Query\ncovered\nby path" <<
                                                "Query\ncovered\nby hits" << "Mean hit\nidentity"  << "Total\nhit mis-\nmatches" <<
@@ -185,14 +184,17 @@ QueryPathsDialog::QueryPathsDialog(QWidget * parent, BlastQuery * query) :
 
 QueryPathsDialog::~QueryPathsDialog()
 {
-    delete ui;
     g_memory->queryPathDialogIsVisible = false;
+    if (g_memory->clearQueryPaths(Memory::BLAST_QUERY_PATH_HIGHLIGHT))
+        emit selectionChanged();
+    delete ui;
 }
 
 
 void QueryPathsDialog::hidden()
 {
     g_memory->queryPathDialogIsVisible = false;
+    g_memory->clearQueryPaths(Memory::BLAST_QUERY_PATH_HIGHLIGHT);
     emit selectionChanged();
 }
 
@@ -203,8 +205,6 @@ void QueryPathsDialog::tableSelectionChanged()
     int totalSelectedRows = 0;
     for (int i = 0; i < selection.size(); ++i)
         totalSelectedRows += selection[i].rowCount();
-
-    g_memory->queryPaths.clear();
 
     QList<int> selectedRows;
     for (int i = 0; i < selection.size(); ++i)
@@ -220,13 +220,16 @@ void QueryPathsDialog::tableSelectionChanged()
         }
     }
 
+    QList<Path> highlightedPaths;
     for (int i = 0; i < selectedRows.size(); ++i)
     {
         int row = selectedRows[i];
         QString pathString = ui->tableWidget->item(row, 0)->text();
         QString pathStringFailure;
-        g_memory->queryPaths.push_back(Path::makeFromString(pathString, false, &pathStringFailure));
+        highlightedPaths.push_back(Path::makeFromString(pathString, false, &pathStringFailure));
     }
+
+    g_memory->setQueryPaths(highlightedPaths, Memory::BLAST_QUERY_PATH_HIGHLIGHT);
 
     emit selectionChanged();
 }

@@ -30,6 +30,7 @@ Memory::Memory()
     queryPathDialogIsVisible = false;
     gafPathDialogIsVisible = false;
     selectedPathsDialogIsVisible = false;
+    pathHighlightSource = NO_PATH_HIGHLIGHT;
 
     userSpecifiedPath = Path();
     userSpecifiedPathString = "";
@@ -52,7 +53,7 @@ void Memory::clearGraphSpecificMemory()
     userSpecifiedPath = Path();
     userSpecifiedPathString = "";
     userSpecifiedPathCircular = false;
-    queryPaths.clear();
+    clearAllQueryPaths();
     queryPathDialogIsVisible = false;
     gafPathDialogIsVisible = false;
     selectedPathsDialogIsVisible = false;
@@ -62,4 +63,42 @@ void Memory::clearGraphSpecificMemory()
     distancePathSearchQuery2 = "";
     distancePathSearchQuery1Path = "";
     distancePathSearchQuery2Path = "";
+}
+
+
+void Memory::setQueryPaths(const QList<Path> &paths, PathHighlightSource source)
+{
+    queryPaths = paths;
+    pathHighlightSource = queryPaths.isEmpty() ? NO_PATH_HIGHLIGHT : source;
+}
+
+
+bool Memory::clearQueryPaths(PathHighlightSource source)
+{
+    if (pathHighlightSource != source)
+        return false;
+
+    return clearAllQueryPaths();
+}
+
+
+bool Memory::clearAllQueryPaths()
+{
+    bool changed = !queryPaths.isEmpty() || pathHighlightSource != NO_PATH_HIGHLIGHT;
+    queryPaths.clear();
+    pathHighlightSource = NO_PATH_HIGHLIGHT;
+    return changed;
+}
+
+
+bool Memory::queryPathHighlightIsVisible() const
+{
+    if (queryPaths.isEmpty())
+        return false;
+
+    if (pathHighlightSource == BLAST_QUERY_PATH_HIGHLIGHT)
+        return queryPathDialogIsVisible;
+
+    return pathHighlightSource == GAF_PATH_HIGHLIGHT ||
+            pathHighlightSource == SELECTED_NODE_PATH_HIGHLIGHT;
 }

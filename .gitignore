@@ -1,3 +1,13 @@
 *DS_Store*
 Bandage.pro.user*
 build
+manuscript
+*.o
+*.obj
+moc_*.cpp
+moc_*.o
+ui_*.h
+qrc_*.cpp
+.qmake.stash
+Makefile
+BandageTests

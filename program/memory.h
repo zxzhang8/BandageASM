@@ -28,8 +28,20 @@
 class Memory
 {
 public:
+    enum PathHighlightSource
+    {
+        NO_PATH_HIGHLIGHT,
+        BLAST_QUERY_PATH_HIGHLIGHT,
+        GAF_PATH_HIGHLIGHT,
+        SELECTED_NODE_PATH_HIGHLIGHT
+    };
+
     Memory();
     void clearGraphSpecificMemory();
+    void setQueryPaths(const QList<Path> &paths, PathHighlightSource source);
+    bool clearQueryPaths(PathHighlightSource source);
+    bool clearAllQueryPaths();
+    bool queryPathHighlightIsVisible() const;
 
     QString rememberedPath;
 
@@ -57,6 +69,7 @@ public:
 
     //This stores the currently selected query path in a query path dialog.
     QList<Path> queryPaths;
+    PathHighlightSource pathHighlightSource;
 
     int terminalWidth;
 };

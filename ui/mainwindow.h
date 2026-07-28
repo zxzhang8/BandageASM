@@ -45,6 +45,7 @@ class SelectedEdgePathWidget;
 class NodeSequenceWidget;
 class SelectedNodesPathsWidget;
 class QDockWidget;
+class BandageTests;
 
 namespace Ui {
 class MainWindow;
@@ -72,17 +73,19 @@ private:
     UiState m_uiState;
     BlastSearchDialog * m_blastSearchDialog;
     QTabWidget * m_tabWidget;
-    int m_gafTabIndex;
     GafPathsDialog * m_gafPathsWidget;
-    int m_selectedEdgePathTabIndex;
     SelectedEdgePathWidget * m_selectedEdgePathWidget;
-    int m_nodeSequenceTabIndex;
     NodeSequenceWidget * m_nodeSequenceWidget;
-    int m_selectedNodesPathsTabIndex;
     SelectedNodesPathsWidget * m_selectedNodesPathsWidget;
     bool m_alreadyShown;
 
+    enum GafReplacementMode {CONFIRM_GAF_REPLACEMENT, FORCE_GAF_REPLACEMENT};
+    enum GafLoadResult {GAF_LOADED, GAF_LOAD_FAILED, GAF_LOAD_CANCELLED};
+
     void cleanUp();
+    void clearManagedTabs();
+    void removeManagedTab(QWidget * widget);
+    GafLoadResult loadGafPathsFile(const QString &fileName, GafReplacementMode replacementMode);
     void displayGraphDetails();
     void clearGraphDetails();
     void resetScene();
@@ -123,6 +126,7 @@ private:
     void updateSaveCustomColoursAction();
     void updateSaveNodeLabelsAction();
     void updateLoadNodeLabelsAction();
+    friend class BandageTests;
 
 private slots:
     void loadGraph(QString fullFileName = "");
@@ -179,6 +183,7 @@ private slots:
     void startingNodesExactMatchChanged();
     void openPathSpecifyDialog();
     void openGafPathsDialog();
+    void clearGafHighlighting();
     void focusOnGafSelection();
     void focusOnSelectedNodesPaths();
     void generateSequenceFromSelectedEdges();
@@ -209,7 +214,6 @@ protected:
 
 signals:
       void windowLoaded();
-
 };
 
 #endif // MAINWINDOW_H

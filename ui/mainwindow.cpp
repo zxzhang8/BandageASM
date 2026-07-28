@@ -82,9 +82,8 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     QMainWindow(0),
     ui(new Ui::MainWindow), m_layoutThread(0), m_imageFilter("PNG (*.png)"),
     m_fileToLoadOnStartup(fileToLoadOnStartup), m_drawGraphAfterLoad(drawGraphAfterLoad),
-    m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafTabIndex(-1), m_gafPathsWidget(0),
-    m_selectedEdgePathTabIndex(-1), m_selectedEdgePathWidget(0), m_nodeSequenceTabIndex(-1),
-    m_nodeSequenceWidget(0), m_selectedNodesPathsTabIndex(-1), m_selectedNodesPathsWidget(0), m_alreadyShown(false)
+    m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafPathsWidget(0),
+    m_selectedEdgePathWidget(0), m_nodeSequenceWidget(0), m_selectedNodesPathsWidget(0), m_alreadyShown(false)
 {
     ui->setupUi(this);
 
@@ -215,7 +214,6 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->nodeWidthSpinBox, SIGNAL(valueChanged(double)), this, SLOT(nodeWidthChanged()));
     connect(g_graphicsView, SIGNAL(copySelectedSequencesToClipboard()), this, SLOT(copySelectedSequencesToClipboard()));
     connect(g_graphicsView, SIGNAL(saveSelectedSequencesToFile()), this, SLOT(saveSelectedSequencesToFile()));
-    connect(g_graphicsView, SIGNAL(showNodeSequenceRequested(DeBruijnNode*)), this, SLOT(showNodeSequenceTab(DeBruijnNode*)));
     connect(ui->actionSave_entire_graph_to_FASTA, SIGNAL(triggered(bool)), this, SLOT(saveEntireGraphToFasta()));
     connect(ui->actionSave_entire_graph_to_FASTA_only_positive_nodes, SIGNAL(triggered(bool)), this, SLOT(saveEntireGraphToFastaOnlyPositiveNodes()));
     connect(ui->actionSave_entire_graph_to_GFA, SIGNAL(triggered(bool)), this, SLOT(saveEntireGraphToGfa()));
@@ -284,43 +282,7 @@ void MainWindow::cleanUp()
     ui->blastQueryComboBox->clear();
     ui->blastQueryComboBox->addItem("none");
     ui->gafFileLabel->setText("Not loaded");
-
-    if (m_selectedEdgePathTabIndex != -1 && m_tabWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_selectedEdgePathTabIndex);
-        m_tabWidget->removeTab(m_selectedEdgePathTabIndex);
-        delete tab;
-        m_selectedEdgePathTabIndex = -1;
-        m_selectedEdgePathWidget = 0;
-    }
-
-    if (m_nodeSequenceTabIndex != -1 && m_tabWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_nodeSequenceTabIndex);
-        m_tabWidget->removeTab(m_nodeSequenceTabIndex);
-        delete tab;
-        m_nodeSequenceTabIndex = -1;
-        m_nodeSequenceWidget = 0;
-    }
-
-    if (m_selectedNodesPathsTabIndex != -1 && m_tabWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_selectedNodesPathsTabIndex);
-        m_tabWidget->removeTab(m_selectedNodesPathsTabIndex);
-        delete tab;
-        m_selectedNodesPathsTabIndex = -1;
-        m_selectedNodesPathsWidget = 0;
-    }
-
-    if (m_gafTabIndex != -1 && m_tabWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
-        m_tabWidget->removeTab(m_gafTabIndex);
-        delete tab;
-        m_gafTabIndex = -1;
-        m_gafPathsWidget = 0;
-    }
-
+    clearManagedTabs();
 
     g_blastSearch->cleanUp();
     g_assemblyGraph->cleanUp();
@@ -336,42 +298,6 @@ void MainWindow::cleanUp()
         m_blastSearchDialog = 0;
     }
 
-    if (m_selectedEdgePathTabIndex != -1 && m_tabWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_selectedEdgePathTabIndex);
-        m_tabWidget->removeTab(m_selectedEdgePathTabIndex);
-        delete tab;
-        m_selectedEdgePathTabIndex = -1;
-        m_selectedEdgePathWidget = 0;
-    }
-
-    if (m_nodeSequenceTabIndex != -1 && m_tabWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_nodeSequenceTabIndex);
-        m_tabWidget->removeTab(m_nodeSequenceTabIndex);
-        delete tab;
-        m_nodeSequenceTabIndex = -1;
-        m_nodeSequenceWidget = 0;
-    }
-
-    if (m_selectedNodesPathsTabIndex != -1 && m_tabWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_selectedNodesPathsTabIndex);
-        m_tabWidget->removeTab(m_selectedNodesPathsTabIndex);
-        delete tab;
-        m_selectedNodesPathsTabIndex = -1;
-        m_selectedNodesPathsWidget = 0;
-    }
-
-    if (m_gafTabIndex != -1 && m_tabWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
-        m_tabWidget->removeTab(m_gafTabIndex);
-        delete tab;
-        m_gafTabIndex = -1;
-        m_gafPathsWidget = 0;
-    }
-
     ui->csvComboBox->clear();
     ui->csvComboBox->setEnabled(false);
     g_settings->displayNodeCsvDataCol = 0;
@@ -382,6 +308,42 @@ void MainWindow::cleanUp()
     ui->nodeAttributesClearButton->setEnabled(false);
     g_settings->nodeAttributeHeaders.clear();
     g_settings->nodeAttributeColumns.clear();
+}
+
+
+void MainWindow::removeManagedTab(QWidget * widget)
+{
+    if (widget == 0)
+        return;
+
+    if (m_tabWidget != 0)
+    {
+        int index = m_tabWidget->indexOf(widget);
+        if (index >= 0)
+            m_tabWidget->removeTab(index);
+    }
+
+    delete widget;
+}
+
+
+void MainWindow::clearManagedTabs()
+{
+    removeManagedTab(m_selectedEdgePathWidget);
+    m_selectedEdgePathWidget = 0;
+
+    removeManagedTab(m_nodeSequenceWidget);
+    m_nodeSequenceWidget = 0;
+
+    removeManagedTab(m_selectedNodesPathsWidget);
+    m_selectedNodesPathsWidget = 0;
+
+    removeManagedTab(m_gafPathsWidget);
+    m_gafPathsWidget = 0;
+
+    g_memory->clearAllQueryPaths();
+    g_memory->gafPathDialogIsVisible = false;
+    g_memory->selectedPathsDialogIsVisible = false;
 }
 
 void MainWindow::loadCSV(QString fullFileName)
@@ -523,6 +485,16 @@ void MainWindow::openGafPathsDialog()
 
     g_memory->rememberedPath = QFileInfo(fileName).absolutePath();
 
+    loadGafPathsFile(fileName, CONFIRM_GAF_REPLACEMENT);
+}
+
+
+MainWindow::GafLoadResult MainWindow::loadGafPathsFile(const QString &fileName,
+                                                       GafReplacementMode replacementMode)
+{
+    if (g_assemblyGraph->m_deBruijnGraphNodes.size() == 0)
+        return GAF_LOAD_FAILED;
+
     GafParseResult parseResult = parseGafFile(fileName);
     if (parseResult.alignments.isEmpty())
     {
@@ -530,29 +502,37 @@ void MainWindow::openGafPathsDialog()
         if (!parseResult.warnings.isEmpty())
             warning += "\n\n" + parseResult.warnings.join("\n");
         QMessageBox::warning(this, "GAF empty or invalid", warning);
-        return;
-    }
-
-    if (m_gafTabIndex != -1 && m_gafPathsWidget != 0)
-    {
-        QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
-        m_tabWidget->removeTab(m_gafTabIndex);
-        delete tab;
-        m_gafPathsWidget = 0;
-        m_gafTabIndex = -1;
+        return GAF_LOAD_FAILED;
     }
 
     QString shortName = QFileInfo(fileName).fileName();
+    if (m_gafPathsWidget != 0 && replacementMode == CONFIRM_GAF_REPLACEMENT)
+    {
+        QString message = "A GAF file is already loaded:\n" + m_gafPathsWidget->fileName() +
+                "\n\nReplace it with:\n" + shortName +
+                "\n\nCurrent GAF filters, sorting, selection and highlighting will be cleared.";
+        QMessageBox::StandardButton reply = QMessageBox::question(this, "Replace loaded GAF?", message,
+                                                                   QMessageBox::Yes | QMessageBox::No,
+                                                                   QMessageBox::No);
+        if (reply != QMessageBox::Yes)
+            return GAF_LOAD_CANCELLED;
+    }
+
+    removeManagedTab(m_gafPathsWidget);
+    m_gafPathsWidget = 0;
+
     ui->gafFileLabel->setText(shortName + " (" + QString::number(parseResult.alignments.size()) + " paths)");
 
     m_gafPathsWidget = new GafPathsDialog(m_tabWidget, shortName, parseResult);
-    m_gafTabIndex = m_tabWidget->addTab(m_gafPathsWidget, "GAF paths");
+    m_tabWidget->addTab(m_gafPathsWidget, "GAF paths");
 
     connect(m_gafPathsWidget, SIGNAL(selectionChanged()), g_graphicsView->viewport(), SLOT(update()));
     connect(m_gafPathsWidget, SIGNAL(selectionChanged()), this, SLOT(selectionChanged()));
     connect(m_gafPathsWidget, SIGNAL(highlightRequested()), this, SLOT(focusOnGafSelection()));
+    connect(m_gafPathsWidget, SIGNAL(clearHighlightRequested()), this, SLOT(clearGafHighlighting()));
 
-    m_tabWidget->setCurrentIndex(m_gafTabIndex);
+    m_tabWidget->setCurrentWidget(m_gafPathsWidget);
+    return GAF_LOADED;
 }
 
 
@@ -575,6 +555,23 @@ void MainWindow::focusOnSelectedNodesPaths()
 }
 
 
+void MainWindow::clearGafHighlighting()
+{
+    if (!g_memory->clearQueryPaths(Memory::GAF_PATH_HIGHLIGHT))
+        return;
+
+    if (m_scene != 0)
+    {
+        m_scene->blockSignals(true);
+        m_scene->clearSelection();
+        m_scene->blockSignals(false);
+    }
+
+    g_graphicsView->viewport()->update();
+    selectionChanged();
+}
+
+
 void MainWindow::loadGraph(QString fullFileName)
 {
     QString selectedFilter = "Any supported graph (*)";
@@ -585,47 +582,6 @@ void MainWindow::loadGraph(QString fullFileName)
 
     if (fullFileName != "") //User did not hit cancel
     {
-        if (m_selectedEdgePathTabIndex != -1 && m_tabWidget != 0)
-        {
-            QWidget * tab = m_tabWidget->widget(m_selectedEdgePathTabIndex);
-            m_tabWidget->removeTab(m_selectedEdgePathTabIndex);
-            delete tab;
-            m_selectedEdgePathTabIndex = -1;
-            m_selectedEdgePathWidget = 0;
-        }
-
-        if (m_nodeSequenceTabIndex != -1 && m_tabWidget != 0)
-        {
-            QWidget * tab = m_tabWidget->widget(m_nodeSequenceTabIndex);
-            m_tabWidget->removeTab(m_nodeSequenceTabIndex);
-            delete tab;
-            m_nodeSequenceTabIndex = -1;
-            m_nodeSequenceWidget = 0;
-        }
-
-        if (m_selectedNodesPathsTabIndex != -1 && m_tabWidget != 0)
-        {
-            QWidget * tab = m_tabWidget->widget(m_selectedNodesPathsTabIndex);
-            m_tabWidget->removeTab(m_selectedNodesPathsTabIndex);
-            delete tab;
-            m_selectedNodesPathsTabIndex = -1;
-            m_selectedNodesPathsWidget = 0;
-        }
-
-        // Reset any loaded GAF paths because a new graph is being loaded.
-        if (m_gafTabIndex != -1 && m_tabWidget != 0)
-        {
-            QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
-            m_tabWidget->removeTab(m_gafTabIndex);
-            delete tab;
-            m_gafTabIndex = -1;
-            m_gafPathsWidget = 0;
-        }
-        g_memory->gafPathDialogIsVisible = false;
-        g_memory->selectedPathsDialogIsVisible = false;
-        g_memory->queryPaths.clear();
-        ui->gafFileLabel->setText("Not loaded");
-
         GraphFileType detectedFileType = g_assemblyGraph->getGraphFileTypeFromFile(fullFileName);
 
         GraphFileType selectedFileType = ANY_FILE_TYPE;
@@ -791,14 +747,8 @@ void MainWindow::showSelectedEdgePathTab(const Path &path)
     if (m_tabWidget == 0)
         return;
 
-    if (m_selectedEdgePathTabIndex != -1)
-    {
-        QWidget * tab = m_tabWidget->widget(m_selectedEdgePathTabIndex);
-        m_tabWidget->removeTab(m_selectedEdgePathTabIndex);
-        delete tab;
-        m_selectedEdgePathTabIndex = -1;
-        m_selectedEdgePathWidget = 0;
-    }
+    removeManagedTab(m_selectedEdgePathWidget);
+    m_selectedEdgePathWidget = 0;
 
     QList<DeBruijnNode *> nodes = path.getNodes();
     QStringList missingSequenceNodes;
@@ -810,8 +760,8 @@ void MainWindow::showSelectedEdgePathTab(const Path &path)
     bool sequencesAvailable = missingSequenceNodes.isEmpty();
 
     m_selectedEdgePathWidget = new SelectedEdgePathWidget(m_tabWidget, path, sequencesAvailable, missingSequenceNodes);
-    m_selectedEdgePathTabIndex = m_tabWidget->addTab(m_selectedEdgePathWidget, "Selected path");
-    m_tabWidget->setCurrentIndex(m_selectedEdgePathTabIndex);
+    m_tabWidget->addTab(m_selectedEdgePathWidget, "Selected path");
+    m_tabWidget->setCurrentWidget(m_selectedEdgePathWidget);
 }
 
 void MainWindow::showSelectedNodesPathsTab(const QList<Path> &paths)
@@ -819,23 +769,17 @@ void MainWindow::showSelectedNodesPathsTab(const QList<Path> &paths)
     if (m_tabWidget == 0)
         return;
 
-    if (m_selectedNodesPathsTabIndex != -1)
-    {
-        QWidget * tab = m_tabWidget->widget(m_selectedNodesPathsTabIndex);
-        m_tabWidget->removeTab(m_selectedNodesPathsTabIndex);
-        delete tab;
-        m_selectedNodesPathsWidget = 0;
-        m_selectedNodesPathsTabIndex = -1;
-    }
+    removeManagedTab(m_selectedNodesPathsWidget);
+    m_selectedNodesPathsWidget = 0;
 
     m_selectedNodesPathsWidget = new SelectedNodesPathsWidget(m_tabWidget, paths);
-    m_selectedNodesPathsTabIndex = m_tabWidget->addTab(m_selectedNodesPathsWidget, "Selected node paths");
+    m_tabWidget->addTab(m_selectedNodesPathsWidget, "Selected node paths");
 
     connect(m_selectedNodesPathsWidget, SIGNAL(selectionChanged()), g_graphicsView->viewport(), SLOT(update()));
     connect(m_selectedNodesPathsWidget, SIGNAL(selectionChanged()), this, SLOT(selectionChanged()));
     connect(m_selectedNodesPathsWidget, SIGNAL(highlightRequested()), this, SLOT(focusOnSelectedNodesPaths()));
 
-    m_tabWidget->setCurrentIndex(m_selectedNodesPathsTabIndex);
+    m_tabWidget->setCurrentWidget(m_selectedNodesPathsWidget);
 }
 
 void MainWindow::showNodeSequenceTab(DeBruijnNode * node)
@@ -843,19 +787,13 @@ void MainWindow::showNodeSequenceTab(DeBruijnNode * node)
     if (m_tabWidget == 0 || node == 0)
         return;
 
-    if (m_nodeSequenceTabIndex != -1)
-    {
-        QWidget * tab = m_tabWidget->widget(m_nodeSequenceTabIndex);
-        m_tabWidget->removeTab(m_nodeSequenceTabIndex);
-        delete tab;
-        m_nodeSequenceTabIndex = -1;
-        m_nodeSequenceWidget = 0;
-    }
+    removeManagedTab(m_nodeSequenceWidget);
+    m_nodeSequenceWidget = 0;
 
     m_nodeSequenceWidget = new NodeSequenceWidget(m_tabWidget, node);
     QString tabTitle = "Node " + node->getName();
-    m_nodeSequenceTabIndex = m_tabWidget->addTab(m_nodeSequenceWidget, tabTitle);
-    m_tabWidget->setCurrentIndex(m_nodeSequenceTabIndex);
+    m_tabWidget->addTab(m_nodeSequenceWidget, tabTitle);
+    m_tabWidget->setCurrentWidget(m_nodeSequenceWidget);
 }
 
 void MainWindow::setPathStartFromNode(DeBruijnNode * node)
@@ -3007,6 +2945,7 @@ void MainWindow::selectAll()
 
 void MainWindow::selectNone()
 {
+    g_memory->clearAllQueryPaths();
     m_scene->blockSignals(true);
     QList<QGraphicsItem *> allItems = m_scene->items();
     for (int i = 0; i < allItems.size(); ++i)

@@ -82,11 +82,8 @@ SelectedNodesPathsWidget::~SelectedNodesPathsWidget()
 {
     g_memory->selectedPathsDialogIsVisible = false;
 
-    if (!g_memory->queryPathDialogIsVisible && !g_memory->gafPathDialogIsVisible)
-    {
-        g_memory->queryPaths.clear();
+    if (g_memory->clearQueryPaths(Memory::SELECTED_NODE_PATH_HIGHLIGHT))
         emit selectionChanged();
-    }
 }
 
 
@@ -100,13 +97,6 @@ void SelectedNodesPathsWidget::showEvent(QShowEvent * event)
 void SelectedNodesPathsWidget::hideEvent(QHideEvent * event)
 {
     g_memory->selectedPathsDialogIsVisible = false;
-
-    if (!g_memory->queryPathDialogIsVisible && !g_memory->gafPathDialogIsVisible)
-    {
-        g_memory->queryPaths.clear();
-        emit selectionChanged();
-    }
-
     QWidget::hideEvent(event);
 }
 
@@ -277,7 +267,7 @@ void SelectedNodesPathsWidget::exportPathSequence(int row)
 void SelectedNodesPathsWidget::highlightPathsForRows(const QList<int> &rows)
 {
     g_memory->selectedPathsDialogIsVisible = true;
-    g_memory->queryPaths.clear();
+    QList<Path> highlightedPaths;
 
     g_graphicsView->scene()->blockSignals(true);
     g_graphicsView->scene()->clearSelection();
@@ -291,7 +281,7 @@ void SelectedNodesPathsWidget::highlightPathsForRows(const QList<int> &rows)
             continue;
 
         const Path &path = m_paths[row];
-        g_memory->queryPaths.push_back(path);
+        highlightedPaths.push_back(path);
 
         QList<DeBruijnNode *> nodes = path.getNodes();
         for (int n = 0; n < nodes.size(); ++n)
@@ -309,6 +299,8 @@ void SelectedNodesPathsWidget::highlightPathsForRows(const QList<int> &rows)
     }
 
     g_graphicsView->scene()->blockSignals(false);
+
+    g_memory->setQueryPaths(highlightedPaths, Memory::SELECTED_NODE_PATH_HIGHLIGHT);
 
     emit selectionChanged();
     g_graphicsView->viewport()->update();

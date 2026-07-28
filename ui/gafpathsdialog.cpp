@@ -215,6 +215,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_table(new GafPathsTableView(this)),
     m_highlightButton(new QPushButton("Highlight selected paths", this)),
     m_highlightAllButton(new QPushButton("Highlight all paths", this)),
+    m_clearHighlightButton(new QPushButton("Clear highlighting", this)),
     m_filterButton(new QPushButton("Filter", this)),
     m_resetFilterButton(new QPushButton("Reset", this)),
     m_prevPageButton(new QPushButton("Prev", this)),
@@ -286,6 +287,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     QHBoxLayout * buttonLayout = new QHBoxLayout();
     buttonLayout->addWidget(m_highlightButton);
     buttonLayout->addWidget(m_highlightAllButton);
+    buttonLayout->addWidget(m_clearHighlightButton);
     buttonLayout->addStretch();
     buttonLayout->addWidget(new QLabel("Path includes:", this));
     buttonLayout->addWidget(m_nodeFilterLineEdit);
@@ -318,6 +320,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
             this, SLOT(onSelectionChanged()));
     connect(m_highlightButton, SIGNAL(clicked()), this, SLOT(highlightSelectedPaths()));
     connect(m_highlightAllButton, SIGNAL(clicked()), this, SLOT(highlightAllPaths()));
+    connect(m_clearHighlightButton, SIGNAL(clicked()), this, SLOT(clearHighlighting()));
     connect(m_filterButton, SIGNAL(clicked()), this, SLOT(filterByMapq()));
     connect(m_resetFilterButton, SIGNAL(clicked()), this, SLOT(resetMapqFilter()));
     connect(m_prevPageButton, SIGNAL(clicked()), this, SLOT(goToPreviousPage()));
@@ -332,18 +335,15 @@ GafPathsDialog::~GafPathsDialog()
 {
     g_memory->gafPathDialogIsVisible = false;
 
-    //If no other path dialog is visible, clear query paths to remove highlighting.
-    if (!g_memory->queryPathDialogIsVisible)
-    {
-        g_memory->queryPaths.clear();
+    if (g_memory->clearQueryPaths(Memory::GAF_PATH_HIGHLIGHT))
         emit selectionChanged();
-    }
 }
 
 
 void GafPathsDialog::showEvent(QShowEvent * event)
 {
     g_memory->gafPathDialogIsVisible = true;
+    updateButtons();
     QWidget::showEvent(event);
 }
 
@@ -351,13 +351,6 @@ void GafPathsDialog::showEvent(QShowEvent * event)
 void GafPathsDialog::hideEvent(QHideEvent * event)
 {
     g_memory->gafPathDialogIsVisible = false;
-
-    if (!g_memory->queryPathDialogIsVisible)
-    {
-        g_memory->queryPaths.clear();
-        emit selectionChanged();
-    }
-
     QWidget::hideEvent(event);
 }
 
@@ -394,6 +387,8 @@ void GafPathsDialog::updateButtons()
             m_table->selectionModel()->hasSelection();
     m_highlightButton->setEnabled(hasSelection);
     m_highlightAllButton->setEnabled(m_model->totalRows() > 0);
+    m_clearHighlightButton->setEnabled(g_memory->pathHighlightSource == Memory::GAF_PATH_HIGHLIGHT &&
+                                       !g_memory->queryPaths.isEmpty());
     m_filterButton->setEnabled(true);
     m_resetFilterButton->setEnabled(m_model->totalRows() != m_alignments.size() ||
                                     m_currentMapqThreshold != 0 ||
@@ -440,10 +435,17 @@ void GafPathsDialog::highlightAllPaths()
     highlightPathsForAlignments(m_model->visibleRows());
 }
 
+
+void GafPathsDialog::clearHighlighting()
+{
+    emit clearHighlightRequested();
+    updateButtons();
+}
+
 void GafPathsDialog::highlightPathsForAlignments(const QList<int> &alignmentIndices)
 {
     g_memory->gafPathDialogIsVisible = true;
-    g_memory->queryPaths.clear();
+    QList<Path> highlightedPaths;
 
     g_graphicsView->scene()->blockSignals(true);
     g_graphicsView->scene()->clearSelection();
@@ -457,7 +459,7 @@ void GafPathsDialog::highlightPathsForAlignments(const QList<int> &alignmentIndi
             continue;
 
         const GafAlignment &alignment = m_alignments[alignmentIndex];
-        g_memory->queryPaths.push_back(alignment.path);
+        highlightedPaths.push_back(alignment.path);
 
         QList<DeBruijnNode *> nodes = alignment.path.getNodes();
         for (int n = 0; n < nodes.size(); ++n)
@@ -476,8 +478,11 @@ void GafPathsDialog::highlightPathsForAlignments(const QList<int> &alignmentIndi
 
     g_graphicsView->scene()->blockSignals(false);
 
+    g_memory->setQueryPaths(highlightedPaths, Memory::GAF_PATH_HIGHLIGHT);
+
     emit selectionChanged();
     g_graphicsView->viewport()->update();
+    updateButtons();
 
     if (!nodesNotFound.isEmpty())
     {

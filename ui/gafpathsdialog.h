@@ -88,6 +88,8 @@ public:
                             const QString &fileName,
                             const GafParseResult &parseResult);
     ~GafPathsDialog();
+    QString fileName() const {return m_fileName;}
+    int alignmentCount() const {return m_alignments.size();}
 
 private:
     QString m_fileName;
@@ -97,6 +99,7 @@ private:
     GafPathsTableView * m_table;
     QPushButton * m_highlightButton;
     QPushButton * m_highlightAllButton;
+    QPushButton * m_clearHighlightButton;
     QPushButton * m_filterButton;
     QPushButton * m_resetFilterButton;
     QPushButton * m_prevPageButton;
@@ -129,6 +132,7 @@ private slots:
     void onSelectionChanged();
     void highlightSelectedPaths();
     void highlightAllPaths();
+    void clearHighlighting();
     void filterByMapq();
     void resetMapqFilter();
     void goToNextPage();
@@ -140,6 +144,7 @@ private slots:
 signals:
     void selectionChanged();
     void highlightRequested();
+    void clearHighlightRequested();
 
 protected:
     void hideEvent(QHideEvent * event) override;

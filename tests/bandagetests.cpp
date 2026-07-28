@@ -18,8 +18,13 @@
 
 #include <QtTest/QtTest>
 #include <QDebug>
-#include "ogdf/basic/Graph.h"
-#include "ogdf/basic/GraphAttributes.h"
+#include <QMessageBox>
+#include <QTemporaryFile>
+#include <QTextStream>
+#include <QTimer>
+#include "bandagetests.h"
+#include "../ogdf/basic/Graph.h"
+#include "../ogdf/basic/GraphAttributes.h"
 #include "../graph/assemblygraph.h"
 #include "../program/settings.h"
 #include "../blast/blastsearch.h"
@@ -29,48 +34,10 @@
 #include "../graph/debruijnedge.h"
 #include "../program/globals.h"
 #include "../command_line/commoncommandlinefunctions.h"
-
-class BandageTests : public QObject
-{
-    Q_OBJECT
-
-private slots:
-    void loadFastg();
-    void loadLastGraph();
-    void loadTrinity();
-    void pathFunctionsOnLastGraph();
-    void pathFunctionsOnFastg();
-    void pathFunctionsOnGfaSequencesInGraph();
-    void pathFunctionsOnGfaSequencesInFasta();
-    void graphLocationFunctions();
-    void loadCsvData();
-    void loadCsvDataTrinity();
-    void loadCustomColours();
-    void blastSearch();
-    void blastSearchFilters();
-    void graphScope();
-    void commandLineSettings();
-    void sciNotComparisons();
-    void graphEdits();
-    void customLabelsDisplay();
-    void velvetToGfa();
-    void spadesToGfa();
-    void mergeNodesOnGfa();
-    void changeNodeNames();
-    void changeNodeDepths();
-    void blastQueryPaths();
-    void bandageInfo();
-
-
-private:
-    void createGlobals();
-    bool createBlastTempDirectory();
-    void deleteBlastTempDirectory();
-    QString getTestDirectory();
-    DeBruijnEdge * getEdgeFromNodeNames(QString startingNodeName,
-                                        QString endingNodeName);
-    bool doCircularSequencesMatch(QByteArray s1, QByteArray s2);
-};
+#include "../program/gafparser.h"
+#include "../ui/gafpathsdialog.h"
+#include "../ui/mainwindow.h"
+#include "../ui/nodesequencewidget.h"
 
 
 
@@ -1525,6 +1492,148 @@ void BandageTests::bandageInfo()
 }
 
 
+void BandageTests::gafParser()
+{
+    createGlobals();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    QTemporaryFile gafFile;
+    QVERIFY(gafFile.open());
+    QTextStream out(&gafFile);
+    out << "read-valid\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t60\n";
+    out << "read-invalid\t100\t0\t100\t+\t>not-in-graph\t100\t0\t100\t100\t100\t20\n";
+    out.flush();
+    gafFile.flush();
+
+    GafParseResult result = parseGafFile(gafFile.fileName());
+    QCOMPARE(result.alignments.size(), 1);
+    QCOMPARE(result.alignments.first().queryName, QString("read-valid"));
+    QCOMPARE(result.alignments.first().bandagePathString, QString("232+, 277+"));
+    QCOMPARE(result.alignments.first().mappingQuality, 60);
+    QCOMPARE(result.warnings.size(), 1);
+}
+
+
+void BandageTests::pathHighlightOwnership()
+{
+    createGlobals();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    QString failure;
+    Path path = Path::makeFromString("232+, 277+", false, &failure);
+    QVERIFY2(!path.isEmpty(), qPrintable(failure));
+    QList<Path> paths;
+    paths << path;
+
+    g_memory->setQueryPaths(paths, Memory::GAF_PATH_HIGHLIGHT);
+    g_memory->gafPathDialogIsVisible = false;
+    QVERIFY(g_memory->queryPathHighlightIsVisible());
+    QVERIFY(!g_memory->clearQueryPaths(Memory::BLAST_QUERY_PATH_HIGHLIGHT));
+    QCOMPARE(g_memory->pathHighlightSource, Memory::GAF_PATH_HIGHLIGHT);
+    QCOMPARE(g_memory->queryPaths.size(), 1);
+
+    g_memory->setQueryPaths(paths, Memory::SELECTED_NODE_PATH_HIGHLIGHT);
+    g_memory->selectedPathsDialogIsVisible = false;
+    QVERIFY(g_memory->queryPathHighlightIsVisible());
+    QVERIFY(!g_memory->clearQueryPaths(Memory::GAF_PATH_HIGHLIGHT));
+
+    g_memory->setQueryPaths(paths, Memory::BLAST_QUERY_PATH_HIGHLIGHT);
+    g_memory->queryPathDialogIsVisible = false;
+    QVERIFY(!g_memory->queryPathHighlightIsVisible());
+    g_memory->queryPathDialogIsVisible = true;
+    QVERIFY(g_memory->queryPathHighlightIsVisible());
+    QVERIFY(g_memory->clearQueryPaths(Memory::BLAST_QUERY_PATH_HIGHLIGHT));
+    QCOMPARE(g_memory->pathHighlightSource, Memory::NO_PATH_HIGHLIGHT);
+    QVERIFY(g_memory->queryPaths.isEmpty());
+}
+
+
+void BandageTests::dynamicTabAndGafReplacement()
+{
+    createGlobals();
+    MainWindow window;
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    QTemporaryFile firstGaf;
+    QTemporaryFile secondGaf;
+    QTemporaryFile invalidGaf;
+    QVERIFY(firstGaf.open());
+    QVERIFY(secondGaf.open());
+    QVERIFY(invalidGaf.open());
+
+    QTextStream firstOut(&firstGaf);
+    firstOut << "read-one\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t60\n";
+    firstOut.flush();
+    firstGaf.flush();
+
+    QTextStream secondOut(&secondGaf);
+    secondOut << "read-two\t1800\t0\t1800\t+\t>277\t1800\t0\t1800\t1790\t1800\t50\n";
+    secondOut.flush();
+    secondGaf.flush();
+
+    QTextStream invalidOut(&invalidGaf);
+    invalidOut << "not-a-gaf-record\n";
+    invalidOut.flush();
+    invalidGaf.flush();
+
+    window.showNodeSequenceTab(g_assemblyGraph->m_deBruijnGraphNodes["232+"]);
+    QCOMPARE(window.loadGafPathsFile(firstGaf.fileName(), MainWindow::FORCE_GAF_REPLACEMENT),
+             MainWindow::GAF_LOADED);
+    QCOMPARE(window.m_tabWidget->count(), 3);
+    QVERIFY(window.m_tabWidget->indexOf(window.m_nodeSequenceWidget) >= 0);
+    QVERIFY(window.m_tabWidget->indexOf(window.m_gafPathsWidget) >= 0);
+    QCOMPARE(window.findChildren<GafPathsDialog *>().size(), 1);
+
+    GafPathsDialog * firstWidget = window.m_gafPathsWidget;
+    QList<Path> highlightedPaths;
+    highlightedPaths << parseGafFile(firstGaf.fileName()).alignments.first().path;
+    g_memory->setQueryPaths(highlightedPaths, Memory::GAF_PATH_HIGHLIGHT);
+    g_memory->gafPathDialogIsVisible = true;
+    window.m_tabWidget->setCurrentIndex(0);
+    QCoreApplication::processEvents();
+    QCOMPARE(g_memory->pathHighlightSource, Memory::GAF_PATH_HIGHLIGHT);
+    QVERIFY(g_memory->queryPathHighlightIsVisible());
+
+    QTimer::singleShot(0, []()
+    {
+        QMessageBox * messageBox = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (messageBox != 0)
+            messageBox->done(QMessageBox::No);
+    });
+    QCOMPARE(window.loadGafPathsFile(secondGaf.fileName(), MainWindow::CONFIRM_GAF_REPLACEMENT),
+             MainWindow::GAF_LOAD_CANCELLED);
+    QCOMPARE(window.m_gafPathsWidget, firstWidget);
+    QCOMPARE(g_memory->pathHighlightSource, Memory::GAF_PATH_HIGHLIGHT);
+
+    QTimer::singleShot(0, []()
+    {
+        QMessageBox * messageBox = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (messageBox != 0)
+            messageBox->done(QMessageBox::Ok);
+    });
+    QCOMPARE(window.loadGafPathsFile(invalidGaf.fileName(), MainWindow::FORCE_GAF_REPLACEMENT),
+             MainWindow::GAF_LOAD_FAILED);
+    QCOMPARE(window.m_gafPathsWidget, firstWidget);
+    QCOMPARE(g_memory->pathHighlightSource, Memory::GAF_PATH_HIGHLIGHT);
+    QCOMPARE(window.findChildren<GafPathsDialog *>().size(), 1);
+
+    window.showNodeSequenceTab(g_assemblyGraph->m_deBruijnGraphNodes["277+"]);
+    QCOMPARE(window.loadGafPathsFile(secondGaf.fileName(), MainWindow::FORCE_GAF_REPLACEMENT),
+             MainWindow::GAF_LOADED);
+    QCOMPARE(window.m_tabWidget->count(), 3);
+    QVERIFY(window.m_gafPathsWidget != firstWidget);
+    QVERIFY(window.m_tabWidget->indexOf(window.m_nodeSequenceWidget) >= 0);
+    QVERIFY(window.m_tabWidget->indexOf(window.m_gafPathsWidget) >= 0);
+    QCOMPARE(window.findChildren<GafPathsDialog *>().size(), 1);
+    QCOMPARE(window.m_gafPathsWidget->alignmentCount(), 1);
+    QCOMPARE(g_memory->pathHighlightSource, Memory::NO_PATH_HIGHLIGHT);
+    QVERIFY(g_memory->queryPaths.isEmpty());
+
+    window.clearGafHighlighting();
+    QCOMPARE(g_memory->pathHighlightSource, Memory::NO_PATH_HIGHLIGHT);
+}
+
+
 
 
 
@@ -1630,4 +1739,3 @@ bool BandageTests::doCircularSequencesMatch(QByteArray s1, QByteArray s2)
 
 
 QTEST_MAIN(BandageTests)
-#include "bandagetests.moc"
