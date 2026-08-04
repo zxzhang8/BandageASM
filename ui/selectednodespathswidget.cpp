@@ -267,7 +267,10 @@ void SelectedNodesPathsWidget::exportPathSequence(int row)
 void SelectedNodesPathsWidget::highlightPathsForRows(const QList<int> &rows)
 {
     g_memory->selectedPathsDialogIsVisible = true;
-    QList<Path> highlightedPaths;
+
+    // Selected-node paths use the graph's normal selection styling.  Clear
+    // any path overlay so it cannot remain after the graph selection changes.
+    g_memory->clearAllQueryPaths();
 
     g_graphicsView->scene()->blockSignals(true);
     g_graphicsView->scene()->clearSelection();
@@ -281,7 +284,6 @@ void SelectedNodesPathsWidget::highlightPathsForRows(const QList<int> &rows)
             continue;
 
         const Path &path = m_paths[row];
-        highlightedPaths.push_back(path);
 
         QList<DeBruijnNode *> nodes = path.getNodes();
         for (int n = 0; n < nodes.size(); ++n)
@@ -299,8 +301,6 @@ void SelectedNodesPathsWidget::highlightPathsForRows(const QList<int> &rows)
     }
 
     g_graphicsView->scene()->blockSignals(false);
-
-    g_memory->setQueryPaths(highlightedPaths, Memory::SELECTED_NODE_PATH_HIGHLIGHT);
 
     emit selectionChanged();
     g_graphicsView->viewport()->update();

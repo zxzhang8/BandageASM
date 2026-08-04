@@ -90,6 +90,7 @@ public:
     ~GafPathsDialog();
     QString fileName() const {return m_fileName;}
     int alignmentCount() const {return m_alignments.size();}
+    bool writeFilteredGaf(const QString &fileName, QString * errorMessage = 0) const;
 
 private:
     QString m_fileName;
@@ -100,6 +101,7 @@ private:
     QPushButton * m_highlightButton;
     QPushButton * m_highlightAllButton;
     QPushButton * m_clearHighlightButton;
+    QPushButton * m_saveFilteredButton;
     QPushButton * m_filterButton;
     QPushButton * m_resetFilterButton;
     QPushButton * m_prevPageButton;
@@ -117,7 +119,7 @@ private:
     int m_currentMapqThreshold;
     int m_currentNodeCountThreshold;
     QStringList m_nodeFilters;
-    bool m_nodeFilterMatchAll;
+    int m_nodeFilterMode;
     bool m_queryRangeSorted;
 
     void populateTable();
@@ -133,6 +135,7 @@ private slots:
     void highlightSelectedPaths();
     void highlightAllPaths();
     void clearHighlighting();
+    void saveFilteredGaf();
     void filterByMapq();
     void resetMapqFilter();
     void goToNextPage();

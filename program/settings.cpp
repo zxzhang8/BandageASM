@@ -71,6 +71,8 @@ Settings::Settings()
     displayNodeDepth = false;
     displayNodeCsvData = false;
     displayNodeCsvDataCol = 0;
+    displayNodeGfaTag = false;
+    displayNodeGfaTagName = "";
     nodeAttributeHeaders.clear();
     nodeAttributeColumns.clear();
     displayBlastHits = false;

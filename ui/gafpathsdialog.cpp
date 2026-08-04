@@ -23,6 +23,9 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QComboBox>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QRegularExpression>
 #include <QHideEvent>
 #include <QLabel>
@@ -35,6 +38,7 @@
 #include <QAbstractSpinBox>
 #include <QLineEdit>
 #include <QScrollBar>
+#include <QTextStream>
 #include "../graph/debruijnnode.h"
 #include "../graph/graphicsitemnode.h"
 #include "../program/globals.h"
@@ -43,6 +47,23 @@
 #include <QShowEvent>
 #include "mygraphicsscene.h"
 #include "mygraphicsview.h"
+
+namespace
+{
+enum NodeFilterMode
+{
+    NODE_FILTER_ANY = 0,
+    NODE_FILTER_ALL = 1,
+    NODE_FILTER_CONTAINED = 2
+};
+
+bool nodeMatchesFilter(DeBruijnNode * node, const QString &filter)
+{
+    bool filterHasSign = filter.endsWith('+') || filter.endsWith('-');
+    return filterHasSign ? node->getName() == filter
+                         : node->getNameWithoutSign() == filter;
+}
+}
 
 GafPathsTableView::GafPathsTableView(QWidget *parent)
     : QTableView(parent),
@@ -215,7 +236,8 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_table(new GafPathsTableView(this)),
     m_highlightButton(new QPushButton("Highlight selected paths", this)),
     m_highlightAllButton(new QPushButton("Highlight all paths", this)),
-    m_clearHighlightButton(new QPushButton("Clear highlighting", this)),
+    m_clearHighlightButton(new QPushButton("Clear selection", this)),
+    m_saveFilteredButton(new QPushButton("Save filtered GAF", this)),
     m_filterButton(new QPushButton("Filter", this)),
     m_resetFilterButton(new QPushButton("Reset", this)),
     m_prevPageButton(new QPushButton("Prev", this)),
@@ -262,7 +284,12 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
 
     m_nodeFilterModeComboBox->addItem("Any");
     m_nodeFilterModeComboBox->addItem("All");
-    m_nodeFilterModeComboBox->setFixedWidth(70);
+    m_nodeFilterModeComboBox->addItem("Contained");
+    m_nodeFilterModeComboBox->setToolTip(
+                "Any: the path contains at least one entered node.\n"
+                "All: the path contains every entered node.\n"
+                "Contained: every node in the path belongs to the entered set.");
+    m_nodeFilterModeComboBox->setFixedWidth(90);
 
     m_pageSizeSpinBox->setRange(10, 5000);
     m_pageSizeSpinBox->setValue(500);
@@ -288,6 +315,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     buttonLayout->addWidget(m_highlightButton);
     buttonLayout->addWidget(m_highlightAllButton);
     buttonLayout->addWidget(m_clearHighlightButton);
+    buttonLayout->addWidget(m_saveFilteredButton);
     buttonLayout->addStretch();
     buttonLayout->addWidget(new QLabel("Path includes:", this));
     buttonLayout->addWidget(m_nodeFilterLineEdit);
@@ -309,7 +337,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_currentMapqThreshold = 0;
     m_currentNodeCountThreshold = 0;
     m_nodeFilters.clear();
-    m_nodeFilterMatchAll = false;
+    m_nodeFilterMode = NODE_FILTER_ANY;
     m_queryRangeSorted = false;
 
     populateTable();
@@ -321,6 +349,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     connect(m_highlightButton, SIGNAL(clicked()), this, SLOT(highlightSelectedPaths()));
     connect(m_highlightAllButton, SIGNAL(clicked()), this, SLOT(highlightAllPaths()));
     connect(m_clearHighlightButton, SIGNAL(clicked()), this, SLOT(clearHighlighting()));
+    connect(m_saveFilteredButton, SIGNAL(clicked()), this, SLOT(saveFilteredGaf()));
     connect(m_filterButton, SIGNAL(clicked()), this, SLOT(filterByMapq()));
     connect(m_resetFilterButton, SIGNAL(clicked()), this, SLOT(resetMapqFilter()));
     connect(m_prevPageButton, SIGNAL(clicked()), this, SLOT(goToPreviousPage()));
@@ -337,6 +366,37 @@ GafPathsDialog::~GafPathsDialog()
 
     if (g_memory->clearQueryPaths(Memory::GAF_PATH_HIGHLIGHT))
         emit selectionChanged();
+}
+
+
+bool GafPathsDialog::writeFilteredGaf(const QString &fileName, QString * errorMessage) const
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        if (errorMessage != 0)
+            *errorMessage = file.errorString();
+        return false;
+    }
+
+    QTextStream out(&file);
+    const QList<int> alignmentIndices = m_model->visibleRows();
+    for (int i = 0; i < alignmentIndices.size(); ++i)
+    {
+        int alignmentIndex = alignmentIndices[i];
+        if (alignmentIndex >= 0 && alignmentIndex < m_alignments.size())
+            out << m_alignments[alignmentIndex].rawLine << "\n";
+    }
+    out.flush();
+
+    if (out.status() != QTextStream::Ok || file.error() != QFile::NoError)
+    {
+        if (errorMessage != 0)
+            *errorMessage = file.errorString();
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -387,8 +447,11 @@ void GafPathsDialog::updateButtons()
             m_table->selectionModel()->hasSelection();
     m_highlightButton->setEnabled(hasSelection);
     m_highlightAllButton->setEnabled(m_model->totalRows() > 0);
-    m_clearHighlightButton->setEnabled(g_memory->pathHighlightSource == Memory::GAF_PATH_HIGHLIGHT &&
-                                       !g_memory->queryPaths.isEmpty());
+    m_saveFilteredButton->setEnabled(m_model->totalRows() > 0);
+    m_saveFilteredButton->setToolTip("Save all " + QString::number(m_model->totalRows()) +
+                                     " paths matching the current filters across every page.");
+    m_clearHighlightButton->setEnabled(!g_graphicsView->scene()->selectedItems().isEmpty() ||
+                                       g_memory->pathHighlightSource == Memory::GAF_PATH_HIGHLIGHT);
     m_filterButton->setEnabled(true);
     m_resetFilterButton->setEnabled(m_model->totalRows() != m_alignments.size() ||
                                     m_currentMapqThreshold != 0 ||
@@ -442,10 +505,45 @@ void GafPathsDialog::clearHighlighting()
     updateButtons();
 }
 
+
+void GafPathsDialog::saveFilteredGaf()
+{
+    if (m_model->totalRows() == 0)
+    {
+        QMessageBox::information(this, "No paths to save",
+                                 "No paths are visible with the current filters.");
+        return;
+    }
+
+    QString baseName = QFileInfo(m_fileName).completeBaseName();
+    if (baseName.isEmpty())
+        baseName = "filtered_paths";
+    QString defaultFileNameAndPath = g_memory->rememberedPath + "/" + baseName + "_filtered.gaf";
+    QString fileName = QFileDialog::getSaveFileName(this, "Save filtered GAF",
+                                                    defaultFileNameAndPath,
+                                                    "GAF (*.gaf);;All files (*)");
+    if (fileName.isEmpty())
+        return;
+
+    QString errorMessage;
+    if (!writeFilteredGaf(fileName, &errorMessage))
+    {
+        QMessageBox::warning(this, "Save filtered GAF",
+                             "Could not write the filtered GAF file:\n" + fileName +
+                             "\n\n" + errorMessage);
+        return;
+    }
+
+    g_memory->rememberedPath = QFileInfo(fileName).absolutePath();
+}
+
 void GafPathsDialog::highlightPathsForAlignments(const QList<int> &alignmentIndices)
 {
     g_memory->gafPathDialogIsVisible = true;
-    QList<Path> highlightedPaths;
+
+    // GAF paths use the graph's normal selection styling.  Clear any path
+    // overlay left by another path source so it cannot outlive the selection.
+    g_memory->clearAllQueryPaths();
 
     g_graphicsView->scene()->blockSignals(true);
     g_graphicsView->scene()->clearSelection();
@@ -459,7 +557,6 @@ void GafPathsDialog::highlightPathsForAlignments(const QList<int> &alignmentIndi
             continue;
 
         const GafAlignment &alignment = m_alignments[alignmentIndex];
-        highlightedPaths.push_back(alignment.path);
 
         QList<DeBruijnNode *> nodes = alignment.path.getNodes();
         for (int n = 0; n < nodes.size(); ++n)
@@ -477,8 +574,6 @@ void GafPathsDialog::highlightPathsForAlignments(const QList<int> &alignmentIndi
     }
 
     g_graphicsView->scene()->blockSignals(false);
-
-    g_memory->setQueryPaths(highlightedPaths, Memory::GAF_PATH_HIGHLIGHT);
 
     emit selectionChanged();
     g_graphicsView->viewport()->update();
@@ -503,7 +598,7 @@ void GafPathsDialog::filterByMapq()
     m_currentNodeCountThreshold = m_nodeCountFilterSpinBox->value();
     QString rawFilter = m_nodeFilterLineEdit->text().trimmed();
     m_nodeFilters = rawFilter.split(QRegularExpression("[,\\s]+"), Qt::SkipEmptyParts);
-    m_nodeFilterMatchAll = (m_nodeFilterModeComboBox->currentIndex() == 1);
+    m_nodeFilterMode = m_nodeFilterModeComboBox->currentIndex();
     applyMapqFilter();
 }
 
@@ -538,47 +633,63 @@ void GafPathsDialog::applyMapqFilter()
         }
 
         const QList<DeBruijnNode *> nodes = m_alignments[i].path.getNodes();
-        bool matched = false;
-        bool allMatched = true;
-        for (int f = 0; f < m_nodeFilters.size(); ++f)
+        bool nodeFilterPass = false;
+        if (m_nodeFilterMode == NODE_FILTER_CONTAINED)
         {
-            const QString filter = m_nodeFilters[f];
-            bool filterHasSign = filter.endsWith('+') || filter.endsWith('-');
-            bool filterMatched = false;
             for (int n = 0; n < nodes.size(); ++n)
             {
-                const QString nodeName = nodes[n]->getName();
-                if (filterHasSign)
+                bool nodeMatched = false;
+                for (int f = 0; f < m_nodeFilters.size(); ++f)
                 {
-                    if (nodeName == filter)
+                    if (nodeMatchesFilter(nodes[n], m_nodeFilters[f]))
+                    {
+                        nodeMatched = true;
+                        break;
+                    }
+                }
+
+                if (!nodeMatched)
+                {
+                    nodeFilterPass = false;
+                    break;
+                }
+
+                nodeFilterPass = true;
+            }
+        }
+        else
+        {
+            bool anyMatched = false;
+            bool allMatched = true;
+            for (int f = 0; f < m_nodeFilters.size(); ++f)
+            {
+                bool filterMatched = false;
+                for (int n = 0; n < nodes.size(); ++n)
+                {
+                    if (nodeMatchesFilter(nodes[n], m_nodeFilters[f]))
                     {
                         filterMatched = true;
                         break;
                     }
                 }
-                else if (nodes[n]->getNameWithoutSign() == filter)
-                {
-                    filterMatched = true;
-                    break;
-                }
-            }
 
-            if (m_nodeFilterMatchAll)
-            {
+                if (filterMatched)
+                    anyMatched = true;
                 if (!filterMatched)
                 {
                     allMatched = false;
-                    break;
+                    if (m_nodeFilterMode == NODE_FILTER_ALL)
+                        break;
                 }
+
+                if (anyMatched && m_nodeFilterMode == NODE_FILTER_ANY)
+                    break;
             }
-            else if (filterMatched)
-            {
-                matched = true;
-                break;
-            }
+
+            nodeFilterPass = (m_nodeFilterMode == NODE_FILTER_ALL) ? allMatched : anyMatched;
         }
 
-        if ((m_nodeFilterMatchAll && allMatched) || (!m_nodeFilterMatchAll && matched))
+        if (nodeFilterPass)
             m_visibleRows << i;
     }
 
@@ -603,6 +714,7 @@ void GafPathsDialog::resetFilter()
     m_nodeFilters.clear();
     m_nodeFilterLineEdit->setText("");
     m_nodeFilterModeComboBox->setCurrentIndex(0);
+    m_nodeFilterMode = NODE_FILTER_ANY;
     m_queryRangeSorted = false;
     populateTable();
     showWarnings();

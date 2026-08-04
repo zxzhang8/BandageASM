@@ -107,6 +107,7 @@ private:
     void setNodeColourSchemeComboBox(NodeColourScheme nodeColourScheme);
     void setGraphScopeComboBox(GraphScope graphScope);
     void setupBlastQueryComboBox();
+    void setupGfaTagComboBox();
     bool checkForImageSave();
     QString convertGraphFileTypeToString(GraphFileType graphFileType);
     void setSelectedNodesWidgetsVisibility(bool visible);

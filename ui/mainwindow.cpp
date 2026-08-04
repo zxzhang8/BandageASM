@@ -172,6 +172,8 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->nodeDepthCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->csvCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->csvComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(setTextDisplaySettings()));
+    connect(ui->gfaTagCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
+    connect(ui->gfaTagComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(setTextDisplaySettings()));
     connect(ui->blastHitsCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->textOutlineCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->fontButton, SIGNAL(clicked()), this, SLOT(fontButtonPressed()));
@@ -301,6 +303,12 @@ void MainWindow::cleanUp()
     ui->csvComboBox->clear();
     ui->csvComboBox->setEnabled(false);
     g_settings->displayNodeCsvDataCol = 0;
+    ui->gfaTagCheckBox->setChecked(false);
+    ui->gfaTagCheckBox->setEnabled(false);
+    ui->gfaTagComboBox->clear();
+    ui->gfaTagComboBox->setEnabled(false);
+    g_settings->displayNodeGfaTag = false;
+    g_settings->displayNodeGfaTagName = "";
     ui->nodeAttributesFileLabel->setText("Not loaded");
     ui->nodeAttributesListWidget->blockSignals(true);
     ui->nodeAttributesListWidget->clear();
@@ -467,6 +475,34 @@ void MainWindow::nodeAttributesItemChanged(QListWidgetItem * item)
 }
 
 
+void MainWindow::setupGfaTagComboBox()
+{
+    QSet<QString> tags;
+    QMapIterator<QString, DeBruijnNode *> nodeIterator(g_assemblyGraph->m_deBruijnGraphNodes);
+    while (nodeIterator.hasNext())
+    {
+        nodeIterator.next();
+        const QStringList nodeTags = nodeIterator.value()->getGfaTagNames();
+        for (int i = 0; i < nodeTags.size(); ++i)
+            tags.insert(nodeTags[i]);
+    }
+
+    QStringList sortedTags = tags.values();
+    sortedTags.sort(Qt::CaseInsensitive);
+
+    QSignalBlocker checkBoxBlocker(ui->gfaTagCheckBox);
+    QSignalBlocker comboBoxBlocker(ui->gfaTagComboBox);
+    ui->gfaTagCheckBox->setChecked(false);
+    ui->gfaTagComboBox->clear();
+    ui->gfaTagComboBox->addItems(sortedTags);
+    ui->gfaTagCheckBox->setEnabled(!sortedTags.isEmpty());
+    ui->gfaTagComboBox->setEnabled(!sortedTags.isEmpty());
+
+    g_settings->displayNodeGfaTag = false;
+    g_settings->displayNodeGfaTagName = sortedTags.isEmpty() ? "" : sortedTags.first();
+}
+
+
 void MainWindow::openGafPathsDialog()
 {
     if (g_assemblyGraph->m_deBruijnGraphNodes.size() == 0)
@@ -557,8 +593,7 @@ void MainWindow::focusOnSelectedNodesPaths()
 
 void MainWindow::clearGafHighlighting()
 {
-    if (!g_memory->clearQueryPaths(Memory::GAF_PATH_HIGHLIGHT))
-        return;
+    g_memory->clearQueryPaths(Memory::GAF_PATH_HIGHLIGHT);
 
     if (m_scene != 0)
     {
@@ -682,6 +717,7 @@ void MainWindow::loadGraph2(GraphFileType graphFileType, QString fullFileName)
         else if (graphFileType == PLAIN_FASTA)
             g_assemblyGraph->buildDeBruijnGraphFromPlainFasta(fullFileName);
 
+        setupGfaTagComboBox();
         setUiState(GRAPH_LOADED);
         setWindowTitle("Bandage - " + fullFileName);
 
@@ -2235,6 +2271,8 @@ void MainWindow::setTextDisplaySettings()
     g_settings->displayBlastHits = ui->blastHitsCheckBox->isChecked();
     g_settings->displayNodeCsvData = ui->csvCheckBox->isChecked();
     g_settings->displayNodeCsvDataCol = ui->csvComboBox->currentIndex();
+    g_settings->displayNodeGfaTag = ui->gfaTagCheckBox->isChecked();
+    g_settings->displayNodeGfaTagName = ui->gfaTagComboBox->currentText();
     g_settings->textOutline = ui->textOutlineCheckBox->isChecked();
 
     g_graphicsView->viewport()->update();
@@ -2700,7 +2738,10 @@ void MainWindow::setInfoTexts()
                                         "you must first load a CSV file (using the 'Load CSV label data' item in "
                                         "the 'File' menu) which contains the node names in the first column and "
                                         "custom labels in subsequent columns. The CSV file must also contain a "
-                                        "header row.");
+                                        "header row.<br><br>"
+                                        "The 'GFA tag' option lists optional attributes from GFA segment records. "
+                                        "Choose a tag and tick the checkbox to display its value on each node that "
+                                        "contains it.");
     ui->nodeFontInfoText->setInfoText("Click the 'Font' button to choose the font used for node labels. The "
                                       "colour of the font is configurable in Bandage's " + settingsDialogTitle + ".<br><br>"
                                       "Ticking 'Text outline' will surround the text with a white outline. "
@@ -3087,6 +3128,7 @@ void MainWindow::setWidgetsFromSettings()
     ui->nodeNamesCheckBox->setChecked(g_settings->displayNodeNames);
     ui->nodeLengthsCheckBox->setChecked(g_settings->displayNodeLengths);
     ui->nodeDepthCheckBox->setChecked(g_settings->displayNodeDepth);
+    ui->gfaTagCheckBox->setChecked(g_settings->displayNodeGfaTag);
     ui->blastHitsCheckBox->setChecked(g_settings->displayBlastHits);
     ui->textOutlineCheckBox->setChecked(g_settings->textOutline);
 

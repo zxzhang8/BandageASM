@@ -187,6 +187,7 @@ GafParseResult parseGafFile(const QString &fileName)
         }
 
         GafAlignment alignment;
+        alignment.rawLine = line;
         alignment.queryName = fields[0];
         alignment.queryLength = fields.size() > 1 ? safeToInt(fields[1]) : -1;
         alignment.queryStart = fields.size() > 2 ? safeToInt(fields[2]) : -1;

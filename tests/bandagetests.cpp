@@ -18,8 +18,14 @@
 
 #include <QtTest/QtTest>
 #include <QDebug>
+#include <QComboBox>
+#include <QCheckBox>
+#include <QDir>
+#include <QFile>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QTemporaryFile>
+#include <QTableWidget>
 #include <QTextStream>
 #include <QTimer>
 #include "bandagetests.h"
@@ -32,12 +38,14 @@
 #include "../program/memory.h"
 #include "../graph/debruijnnode.h"
 #include "../graph/debruijnedge.h"
+#include "../graph/graphicsitemnode.h"
 #include "../program/globals.h"
 #include "../command_line/commoncommandlinefunctions.h"
 #include "../program/gafparser.h"
 #include "../ui/gafpathsdialog.h"
 #include "../ui/mainwindow.h"
 #include "../ui/nodesequencewidget.h"
+#include "../ui/selectednodespathswidget.h"
 
 
 
@@ -1096,6 +1104,63 @@ void BandageTests::customLabelsDisplay()
 }
 
 
+void BandageTests::gfaTagNodeLabels()
+{
+    createGlobals();
+    MainWindow window;
+
+    QTemporaryFile gfaFile(QDir::tempPath() + "/bandage-gfa-tags-XXXXXX.gfa");
+    QVERIFY(gfaFile.open());
+    QTextStream out(&gfaFile);
+    out << "H\tVN:Z:1.0\n";
+    out << "S\talpha\tAAAA\tXX:Z:first value\tSC:f:1.5\n";
+    out << "S\tbeta\tCCCC\tYY:i:7\n";
+    out.flush();
+    gfaFile.close();
+
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(gfaFile.fileName()));
+    DeBruijnNode * alpha = g_assemblyGraph->m_deBruijnGraphNodes.value("alpha+");
+    QVERIFY(alpha != 0);
+    QCOMPARE(alpha->getGfaExtraSegmentTags().size(), 2);
+    window.setupGfaTagComboBox();
+    window.setUiState(GRAPH_DRAWN);
+
+    QCheckBox * tagCheckBox = window.findChild<QCheckBox *>("gfaTagCheckBox");
+    QComboBox * tagComboBox = window.findChild<QComboBox *>("gfaTagComboBox");
+    QVERIFY(tagCheckBox != 0);
+    QVERIFY(tagComboBox != 0);
+    QVERIFY(tagCheckBox->isEnabled());
+    QVERIFY(tagComboBox->isEnabled());
+    QCOMPARE(tagComboBox->count(), 3);
+    QVERIFY(tagComboBox->findText("SC") >= 0);
+    QVERIFY(tagComboBox->findText("XX") >= 0);
+    QVERIFY(tagComboBox->findText("YY") >= 0);
+
+    DeBruijnNode * alphaReverse = g_assemblyGraph->m_deBruijnGraphNodes["alpha-"];
+    QVERIFY(alphaReverse != 0);
+    QCOMPARE(alpha->getGfaTagValue("XX"), QString("first value"));
+    QCOMPARE(alphaReverse->getGfaTagValue("XX"), QString("first value"));
+
+    std::vector<QPointF> points;
+    points.push_back(QPointF(0.0, 0.0));
+    points.push_back(QPointF(50.0, 0.0));
+    GraphicsItemNode alphaItem(alpha, points);
+
+    tagComboBox->setCurrentText("XX");
+    tagCheckBox->setChecked(false);
+    window.setTextDisplaySettings();
+    QVERIFY(alphaItem.getNodeText().isEmpty());
+
+    tagCheckBox->setChecked(true);
+    window.setTextDisplaySettings();
+    QCOMPARE(alphaItem.getNodeText(), QStringList() << "first value");
+
+    tagComboBox->setCurrentText("SC");
+    window.setTextDisplaySettings();
+    QCOMPARE(alphaItem.getNodeText(), QStringList() << "1.5");
+}
+
+
 //Saving a Velvet graph to GFA is a bit complex because the node sequence offset
 //must be filled in.  This function tests aspects of that process.
 void BandageTests::velvetToGfa()
@@ -1511,6 +1576,215 @@ void BandageTests::gafParser()
     QCOMPARE(result.alignments.first().bandagePathString, QString("232+, 277+"));
     QCOMPARE(result.alignments.first().mappingQuality, 60);
     QCOMPARE(result.warnings.size(), 1);
+}
+
+
+void BandageTests::gafFilteredExportIncludesAllPages()
+{
+    createGlobals();
+    MainWindow window;
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    const QString firstLine =
+            "read-first\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t60\ttp:A:P";
+    const QString filteredOutLine =
+            "read-filtered-out\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t10\ttp:A:S";
+    const QString lastLine =
+            "read-last\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t50\tcg:Z:2000M";
+
+    QTemporaryFile gafFile;
+    QVERIFY(gafFile.open());
+    QTextStream gafOut(&gafFile);
+    gafOut << firstLine << "\n" << filteredOutLine << "\n" << lastLine << "\n";
+    gafOut.flush();
+    gafFile.flush();
+
+    GafParseResult result = parseGafFile(gafFile.fileName());
+    QCOMPARE(result.alignments.size(), 3);
+    QCOMPARE(result.alignments.first().rawLine, firstLine);
+
+    GafPathsDialog dialog(0, "input.gaf", result);
+    GafPathsModel * model = dialog.findChild<GafPathsModel *>();
+    QVERIFY(model != 0);
+    model->setPageSize(1);
+    model->setVisibleRows(QList<int>() << 0 << 2);
+    model->setCurrentPage(1);
+    QCOMPARE(model->pageCount(), 2);
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->data(model->index(0, 1)).toString(), QString("read-last"));
+
+    QTemporaryFile outputFile;
+    QVERIFY(outputFile.open());
+    QString outputFileName = outputFile.fileName();
+    outputFile.close();
+
+    QString errorMessage;
+    QVERIFY2(dialog.writeFilteredGaf(outputFileName, &errorMessage), qPrintable(errorMessage));
+
+    QFile savedFile(outputFileName);
+    QVERIFY(savedFile.open(QIODevice::ReadOnly | QIODevice::Text));
+    QTextStream savedIn(&savedFile);
+    QCOMPARE(savedIn.readAll(), firstLine + "\n" + lastLine + "\n");
+}
+
+
+void BandageTests::gafNodeFilterContainedMode()
+{
+    createGlobals();
+    MainWindow window;
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    QTemporaryFile gafFile;
+    QVERIFY(gafFile.open());
+    QTextStream out(&gafFile);
+    out << "read-single\t100\t0\t100\t+\t>232\t100\t0\t100\t100\t100\t60\n";
+    out << "read-all\t200\t0\t200\t+\t>232>277\t200\t0\t200\t200\t200\t60\n";
+    out << "read-extra\t200\t0\t200\t+\t>280<232\t200\t0\t200\t200\t200\t60\n";
+    out << "read-none\t200\t0\t200\t+\t>297>289\t200\t0\t200\t200\t200\t60\n";
+    out.flush();
+    gafFile.flush();
+
+    GafParseResult result = parseGafFile(gafFile.fileName());
+    QCOMPARE(result.alignments.size(), 4);
+
+    GafPathsDialog dialog(0, "input.gaf", result);
+    GafPathsModel * model = dialog.findChild<GafPathsModel *>();
+    QComboBox * modeComboBox = dialog.findChild<QComboBox *>();
+    QVERIFY(model != 0);
+    QVERIFY(modeComboBox != 0);
+
+    QLineEdit * nodeFilterLineEdit = 0;
+    const QList<QLineEdit *> lineEdits = dialog.findChildren<QLineEdit *>();
+    for (int i = 0; i < lineEdits.size(); ++i)
+    {
+        if (lineEdits[i]->placeholderText() == "Node name(s)")
+        {
+            nodeFilterLineEdit = lineEdits[i];
+            break;
+        }
+    }
+    QVERIFY(nodeFilterLineEdit != 0);
+    nodeFilterLineEdit->setText("232, 277");
+
+    modeComboBox->setCurrentIndex(0);
+    QVERIFY(QMetaObject::invokeMethod(&dialog, "filterByMapq", Qt::DirectConnection));
+    QCOMPARE(model->totalRows(), 3);
+
+    modeComboBox->setCurrentIndex(1);
+    QVERIFY(QMetaObject::invokeMethod(&dialog, "filterByMapq", Qt::DirectConnection));
+    QCOMPARE(model->totalRows(), 1);
+    QCOMPARE(model->data(model->index(0, 1)).toString(), QString("read-all"));
+
+    modeComboBox->setCurrentIndex(2);
+    QVERIFY(QMetaObject::invokeMethod(&dialog, "filterByMapq", Qt::DirectConnection));
+    QCOMPARE(model->totalRows(), 2);
+    QCOMPARE(model->visibleRows(), QList<int>() << 0 << 1);
+}
+
+
+void BandageTests::gafHighlightUsesGraphSelection()
+{
+    createGlobals();
+    MainWindow window;
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    QTemporaryFile gafFile;
+    QVERIFY(gafFile.open());
+    QTextStream out(&gafFile);
+    out << "read-one\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t60\n";
+    out.flush();
+    gafFile.flush();
+
+    QCOMPARE(window.loadGafPathsFile(gafFile.fileName(), MainWindow::FORCE_GAF_REPLACEMENT),
+             MainWindow::GAF_LOADED);
+
+    QList<Path> paths;
+    paths << parseGafFile(gafFile.fileName()).alignments.first().path;
+    g_memory->setQueryPaths(paths, Memory::GAF_PATH_HIGHLIGHT);
+    QVERIFY(g_memory->queryPathHighlightIsVisible());
+
+    QList<GraphicsItemNode *> pathItems;
+    QList<DeBruijnNode *> pathNodes = paths.first().getNodes();
+    for (int i = 0; i < pathNodes.size(); ++i)
+    {
+        std::vector<QPointF> points;
+        points.push_back(QPointF(i * 100.0, 0.0));
+        points.push_back(QPointF(i * 100.0 + 50.0, 0.0));
+        GraphicsItemNode * item = new GraphicsItemNode(pathNodes[i], points);
+        item->setFlag(QGraphicsItem::ItemIsSelectable);
+        pathNodes[i]->setGraphicsItemNode(item);
+        g_graphicsView->scene()->addItem(item);
+        pathItems << item;
+    }
+
+    QGraphicsRectItem * previousSelection = g_graphicsView->scene()->addRect(-100.0, -100.0,
+                                                                              10.0, 10.0);
+    previousSelection->setFlag(QGraphicsItem::ItemIsSelectable);
+    previousSelection->setSelected(true);
+
+    GafPathsTableView * table = window.m_gafPathsWidget->findChild<GafPathsTableView *>();
+    QVERIFY(table != 0);
+    table->selectRow(0);
+    QVERIFY(QMetaObject::invokeMethod(window.m_gafPathsWidget, "highlightSelectedPaths",
+                                      Qt::DirectConnection));
+
+    QCOMPARE(g_memory->pathHighlightSource, Memory::NO_PATH_HIGHLIGHT);
+    QVERIFY(g_memory->queryPaths.isEmpty());
+    QVERIFY(!previousSelection->isSelected());
+    for (int i = 0; i < pathItems.size(); ++i)
+        QVERIFY(pathItems[i]->isSelected());
+
+    window.clearGafHighlighting();
+    QVERIFY(g_graphicsView->scene()->selectedItems().isEmpty());
+}
+
+
+void BandageTests::selectedNodesPathHighlightUsesGraphSelection()
+{
+    createGlobals();
+    MainWindow window;
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    QString failure;
+    Path path = Path::makeFromString("232+, 277+", false, &failure);
+    QVERIFY2(!path.isEmpty(), qPrintable(failure));
+    QList<Path> paths;
+    paths << path;
+
+    window.showSelectedNodesPathsTab(paths);
+    g_memory->setQueryPaths(paths, Memory::SELECTED_NODE_PATH_HIGHLIGHT);
+    QVERIFY(g_memory->queryPathHighlightIsVisible());
+
+    QList<GraphicsItemNode *> pathItems;
+    QList<DeBruijnNode *> pathNodes = path.getNodes();
+    for (int i = 0; i < pathNodes.size(); ++i)
+    {
+        std::vector<QPointF> points;
+        points.push_back(QPointF(i * 100.0, 0.0));
+        points.push_back(QPointF(i * 100.0 + 50.0, 0.0));
+        GraphicsItemNode * item = new GraphicsItemNode(pathNodes[i], points);
+        item->setFlag(QGraphicsItem::ItemIsSelectable);
+        pathNodes[i]->setGraphicsItemNode(item);
+        g_graphicsView->scene()->addItem(item);
+        pathItems << item;
+    }
+
+    QGraphicsRectItem * previousSelection = g_graphicsView->scene()->addRect(-100.0, -100.0,
+                                                                              10.0, 10.0);
+    previousSelection->setFlag(QGraphicsItem::ItemIsSelectable);
+    previousSelection->setSelected(true);
+
+    QTableWidget * table = window.m_selectedNodesPathsWidget->findChild<QTableWidget *>();
+    QVERIFY(table != 0);
+    table->selectRow(0);
+    QVERIFY(QMetaObject::invokeMethod(window.m_selectedNodesPathsWidget, "highlightSelectedPaths",
+                                      Qt::DirectConnection));
+
+    QCOMPARE(g_memory->pathHighlightSource, Memory::NO_PATH_HIGHLIGHT);
+    QVERIFY(g_memory->queryPaths.isEmpty());
+    QVERIFY(!previousSelection->isSelected());
+    for (int i = 0; i < pathItems.size(); ++i)
+        QVERIFY(pathItems[i]->isSelected());
 }
 
 

@@ -124,6 +124,8 @@ public:
     bool displayNodeDepth;
     bool displayNodeCsvData;
     int  displayNodeCsvDataCol;
+    bool displayNodeGfaTag;
+    QString displayNodeGfaTagName;
     QStringList nodeAttributeHeaders;
     QList<int> nodeAttributeColumns;
     bool displayBlastHits;

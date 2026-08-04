@@ -95,6 +95,8 @@ public:
     QStringList getAllCsvData() const {return m_csvData;}
     QString getCsvLine(int i) const {if (i < m_csvData.length()) return m_csvData[i]; else return "";}
     QStringList getGfaExtraSegmentTags() const {return m_gfaExtraSegmentTags;}
+    QStringList getGfaTagNames() const;
+    QString getGfaTagValue(const QString &tagName) const;
     bool isInDepthRange(double min, double max) const;
     bool sequenceIsMissing() const;
     DeBruijnEdge *getSelfLoopingEdge() const;

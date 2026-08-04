@@ -836,6 +836,12 @@ QStringList GraphicsItemNode::getNodeText()
         nodeText << formatDepthForDisplay(m_deBruijnNode->getDepth());
     if (g_settings->displayNodeCsvData && m_deBruijnNode->hasCsvData())
         nodeText << m_deBruijnNode->getCsvLine(g_settings->displayNodeCsvDataCol);
+    if (g_settings->displayNodeGfaTag)
+    {
+        QString value = m_deBruijnNode->getGfaTagValue(g_settings->displayNodeGfaTagName);
+        if (!value.isEmpty())
+            nodeText << value;
+    }
 
     return nodeText;
 }
@@ -1144,5 +1150,6 @@ bool GraphicsItemNode::anyNodeDisplayText()
             g_settings->displayNodeNames ||
             g_settings->displayNodeLengths ||
             g_settings->displayNodeDepth ||
-            g_settings->displayNodeCsvData;
+            g_settings->displayNodeCsvData ||
+            g_settings->displayNodeGfaTag;
 }

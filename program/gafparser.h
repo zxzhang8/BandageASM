@@ -25,6 +25,7 @@
 
 struct GafAlignment
 {
+    QString rawLine;
     QString queryName;
     QString strand;
     QString rawPathField;
