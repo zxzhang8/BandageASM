@@ -23,7 +23,42 @@ VERSION = 0.9.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 DEFINES -= UNICODE
 
-CONFIG += c++11
+CONFIG += c++17
+
+isEmpty(ORTOOLS_ROOT): ORTOOLS_ROOT = $$(ORTOOLS_ROOT)
+isEmpty(ORTOOLS_ROOT) {
+    error("OR-Tools is required. Pass ORTOOLS_ROOT=C:/path/to/or-tools to qmake. On Windows, use the Qt MSVC 2022 64-bit kit with the official OR-Tools package; MinGW is not binary-compatible.")
+} else {
+    win32-g++: error("The official Windows OR-Tools C++ package requires MSVC 2022 and cannot be linked with the Qt MinGW kit. Select a Qt MSVC 2022 64-bit kit.")
+    !exists($$ORTOOLS_ROOT/include/ortools/sat/cp_model.h): error("ORTOOLS_ROOT does not contain include/ortools/sat/cp_model.h")
+    !exists($$ORTOOLS_ROOT/lib): error("ORTOOLS_ROOT does not contain a lib directory")
+    DEFINES += BANDAGE_WITH_ORTOOLS
+    DEFINES += USE_LP_PARSER USE_MATH_OPT USE_BOP USE_CBC USE_CLP USE_GLOP USE_PDLP USE_SCIP
+    INCLUDEPATH += $$ORTOOLS_ROOT/include
+    win32:!win32-g++ {
+        CONFIG -= c++17
+        CONFIG += c++20
+        DEFINES += OR_BUILD_DLL ABSL_CONSUME_DLL PROTOBUF_USE_DLLS __WIN32__
+        QMAKE_CXXFLAGS += /bigobj /DNOMINMAX /DWIN32_LEAN_AND_MEAN=1 /Zc:preprocessor
+        ORTOOLS_LIB_FILES = $$files($$ORTOOLS_ROOT/lib/*.lib)
+        isEmpty(ORTOOLS_LIB_FILES): error("No .lib files were found under ORTOOLS_ROOT/lib")
+        LIBS += $$ORTOOLS_LIB_FILES ws2_32.lib
+    }
+    unix {
+        DEFINES += OR_PROTO_DLL=
+        QMAKE_CXXFLAGS += -fwrapv
+        LIBS += -L$$ORTOOLS_ROOT/lib -lortools
+    }
+    unix: QMAKE_RPATHDIR += $$ORTOOLS_ROOT/lib
+}
+
+win32:!win32-g++ {
+    BANDAGE_DEPLOY_MODE = --release
+    CONFIG(debug, debug|release): BANDAGE_DEPLOY_MODE = --debug
+    BANDAGE_DEPLOY_SCRIPT = $$shell_path($$PWD/build_scripts/deploy_windows_msvc.bat)
+    BANDAGE_WINDEPLOYQT = $$shell_path($$[QT_INSTALL_BINS]/windeployqt.exe)
+    QMAKE_POST_LINK += $$quote(call "$$BANDAGE_DEPLOY_SCRIPT" "$(DESTDIR_TARGET)" "$$shell_path($$ORTOOLS_ROOT)" "$$BANDAGE_WINDEPLOYQT" $$BANDAGE_DEPLOY_MODE)
+}
 
 target.path += /usr/local/bin
 INSTALLS += target
@@ -34,6 +69,10 @@ SOURCES += \
     program/main.cpp\
     program/settings.cpp \
     program/pathsearch.cpp \
+    program/tanglepathsearch.cpp \
+    program/beamsearchtanglepathfinder.cpp \
+    program/cpsattanglepathfinder.cpp \
+    program/tanglepathworker.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
     graph/debruijnnode.cpp \
@@ -124,11 +163,14 @@ SOURCES += \
     ui/changenodedepthdialog.cpp \
     ui/selectededgepathwidget.cpp \
     ui/nodesequencewidget.cpp \
-    ui/selectednodespathswidget.cpp
+    ui/selectednodespathswidget.cpp \
+    ui/cpsatadvancedconfigwidget.cpp
 
 HEADERS  += \
     program/settings.h \
     program/pathsearch.h \
+    program/tanglepathsearch.h \
+    program/tanglepathworker.h \
     program/globals.h \
     program/graphlayoutworker.h \
     graph/debruijnnode.h \
@@ -185,6 +227,7 @@ HEADERS  += \
     ui/selectededgepathwidget.h \
     ui/nodesequencewidget.h \
     ui/selectednodespathswidget.h \
+    ui/cpsatadvancedconfigwidget.h \
     ogdf/basic/Graph.h \
     ogdf/basic/GraphAttributes.h \
     ogdf/energybased/FMMMLayout.h \

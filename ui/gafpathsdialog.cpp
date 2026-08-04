@@ -400,6 +400,20 @@ bool GafPathsDialog::writeFilteredGaf(const QString &fileName, QString * errorMe
 }
 
 
+QList<GafAlignment> GafPathsDialog::filteredAlignments() const
+{
+    QList<GafAlignment> filtered;
+    const QList<int> rows = m_model->visibleRows();
+    for (int i = 0; i < rows.size(); ++i)
+    {
+        const int alignmentIndex = rows[i];
+        if (alignmentIndex >= 0 && alignmentIndex < m_alignments.size())
+            filtered << m_alignments[alignmentIndex];
+    }
+    return filtered;
+}
+
+
 void GafPathsDialog::showEvent(QShowEvent * event)
 {
     g_memory->gafPathDialogIsVisible = true;

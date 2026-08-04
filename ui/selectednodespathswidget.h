@@ -21,6 +21,7 @@
 #include <QList>
 #include <QWidget>
 #include "../graph/path.h"
+#include "../program/tanglepathsearch.h"
 
 class QLabel;
 class QPushButton;
@@ -31,11 +32,19 @@ class SelectedNodesPathsWidget : public QWidget
     Q_OBJECT
 
 public:
-    explicit SelectedNodesPathsWidget(QWidget * parent, const QList<Path> &paths);
+    explicit SelectedNodesPathsWidget(QWidget * parent,
+                                      const QList<Path> &paths,
+                                      const QString &algorithm = QString(),
+                                      const QString &status = QString(),
+                                      const QList<TanglePathCandidate> &candidateDetails =
+                                          QList<TanglePathCandidate>());
     ~SelectedNodesPathsWidget();
 
 private:
     QList<Path> m_paths;
+    QString m_algorithm;
+    QString m_status;
+    QList<TanglePathCandidate> m_candidateDetails;
     QLabel * m_infoLabel;
     QTableWidget * m_table;
     QPushButton * m_highlightButton;

@@ -25,9 +25,11 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QTableWidget>
 #include <QTextStream>
 #include <QVBoxLayout>
+#include <cmath>
 #include "mygraphicsview.h"
 #include "../graph/assemblygraph.h"
 #include "../graph/debruijnnode.h"
@@ -35,11 +37,38 @@
 #include "../program/globals.h"
 #include "../program/memory.h"
 
-SelectedNodesPathsWidget::SelectedNodesPathsWidget(QWidget * parent, const QList<Path> &paths) :
+namespace
+{
+class SelectedPathsTableWidget : public QTableWidget
+{
+public:
+    explicit SelectedPathsTableWidget(QWidget * parent) : QTableWidget(parent) {}
+
+protected:
+    void scrollTo(const QModelIndex &index, ScrollHint hint = EnsureVisible) override
+    {
+        // Row selection should keep the row visible vertically without chasing the
+        // current cell horizontally (which can otherwise jump to the last column).
+        const int horizontalPosition = horizontalScrollBar()->value();
+        QTableWidget::scrollTo(index, hint);
+        horizontalScrollBar()->setValue(horizontalPosition);
+    }
+};
+}
+
+SelectedNodesPathsWidget::SelectedNodesPathsWidget(
+        QWidget * parent,
+        const QList<Path> &paths,
+        const QString &algorithm,
+        const QString &status,
+        const QList<TanglePathCandidate> &candidateDetails) :
     QWidget(parent),
     m_paths(paths),
+    m_algorithm(algorithm),
+    m_status(status),
+    m_candidateDetails(candidateDetails),
     m_infoLabel(new QLabel(this)),
-    m_table(new QTableWidget(this)),
+    m_table(new SelectedPathsTableWidget(this)),
     m_highlightButton(new QPushButton("Highlight selected paths", this)),
     m_highlightAllButton(new QPushButton("Highlight all paths", this)),
     m_exportFastaButton(new QPushButton("Export FASTA", this))
@@ -53,8 +82,10 @@ SelectedNodesPathsWidget::SelectedNodesPathsWidget(QWidget * parent, const QList
     m_infoLabel->setWordWrap(true);
     layout->addWidget(m_infoLabel);
 
-    m_table->setColumnCount(4);
-    m_table->setHorizontalHeaderLabels(QStringList() << "Nodes" << "Length\n(bp)" << "Read support\n(avg)" << "Path");
+    m_table->setColumnCount(6);
+    m_table->setHorizontalHeaderLabels(QStringList() << "Nodes" << "Length\n(bp)"
+                                       << "Read support\n(avg)" << "Path"
+                                       << "Score / objective" << "Read evidence");
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -135,16 +166,32 @@ void SelectedNodesPathsWidget::populateTable()
         QTableWidgetItem * lengthItem = new QTableWidgetItem(length);
         QTableWidgetItem * readSupportItem = new QTableWidgetItem(readSupportAverageText);
         QTableWidgetItem * pathItem = new QTableWidgetItem(pathString);
+        QString scoreText = "N/A";
+        QString evidenceText = "N/A";
+        if (row < m_candidateDetails.size())
+        {
+            if (std::isfinite(m_candidateDetails[row].score))
+                scoreText = formatDoubleForDisplay(m_candidateDetails[row].score, 6);
+            if (std::isfinite(m_candidateDetails[row].weightedReadSupport))
+                evidenceText = formatDoubleForDisplay(m_candidateDetails[row].weightedReadSupport, 4);
+        }
 
         m_table->setItem(row, 0, nodesItem);
         m_table->setItem(row, 1, lengthItem);
         m_table->setItem(row, 2, readSupportItem);
         m_table->setItem(row, 3, pathItem);
+        m_table->setItem(row, 4, new QTableWidgetItem(scoreText));
+        m_table->setItem(row, 5, new QTableWidgetItem(evidenceText));
     }
 
     m_table->resizeColumnsToContents();
 
-    m_infoLabel->setText("Found " + formatIntForDisplay(m_paths.size()) + " path(s).");
+    QString info = "Found " + formatIntForDisplay(m_paths.size()) + " path(s).";
+    if (!m_algorithm.isEmpty())
+        info += " Algorithm: " + m_algorithm + ".";
+    if (!m_status.isEmpty())
+        info += " Status: " + m_status + ".";
+    m_infoLabel->setText(info);
 }
 
 
@@ -254,6 +301,9 @@ void SelectedNodesPathsWidget::exportPathSequence(int row)
         mdOut << "Length (bp): " << m_table->item(row, 1)->text() << "\n";
         mdOut << "Read support (avg): " << m_table->item(row, 2)->text() << "\n";
         mdOut << "Path: " << m_table->item(row, 3)->text() << "\n";
+        mdOut << "Algorithm: " << (m_algorithm.isEmpty() ? "Standard" : m_algorithm) << "\n";
+        mdOut << "Score / objective: " << m_table->item(row, 4)->text() << "\n";
+        mdOut << "Read evidence: " << m_table->item(row, 5)->text() << "\n";
     }
     else
     {

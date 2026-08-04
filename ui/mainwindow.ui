@@ -1674,7 +1674,7 @@
            <property name="bottomMargin">
             <number>0</number>
            </property>
-           <item row="1" column="0">
+           <item row="2" column="0">
             <widget class="InfoTextWidget" name="selectionSearchNodesMatchTypeInfoText" native="true">
              <property name="enabled">
               <bool>true</bool>
@@ -1738,7 +1738,7 @@
              </property>
             </widget>
            </item>
-           <item row="1" column="1">
+           <item row="2" column="1">
             <widget class="QLabel" name="label_16">
              <property name="enabled">
               <bool>true</bool>
@@ -2077,6 +2077,12 @@
         </item>
         <item>
          <widget class="QWidget" name="selectedNodesPathsWidget" native="true">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <layout class="QGridLayout" name="gridLayout_selectedNodesPaths">
            <property name="leftMargin">
             <number>0</number>
@@ -2091,44 +2097,96 @@
             <number>0</number>
            </property>
            <item row="0" column="0">
+            <widget class="QLabel" name="selectedNodesPathAlgorithmLabel">
+             <property name="text">
+              <string>Algorithm:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QComboBox" name="selectedNodesPathAlgorithmComboBox">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <item>
+              <property name="text">
+               <string>Standard</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>Beam search</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>CP-SAT</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="2" column="0">
             <widget class="QLabel" name="selectedNodesPathStartLabel">
              <property name="text">
               <string>Start:</string>
              </property>
             </widget>
            </item>
-           <item row="0" column="1">
-            <widget class="QComboBox" name="selectedNodesPathStartComboBox"/>
+           <item row="2" column="1">
+            <widget class="QComboBox" name="selectedNodesPathStartComboBox">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+            </widget>
            </item>
-           <item row="1" column="0">
+           <item row="3" column="0">
             <widget class="QLabel" name="selectedNodesPathEndLabel">
              <property name="text">
               <string>End:</string>
              </property>
             </widget>
            </item>
-           <item row="1" column="1">
-            <widget class="QComboBox" name="selectedNodesPathEndComboBox"/>
+           <item row="3" column="1">
+            <widget class="QComboBox" name="selectedNodesPathEndComboBox">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+            </widget>
            </item>
-           <item row="2" column="0">
+           <item row="4" column="0">
             <widget class="QLabel" name="selectedNodesPathMaxNodesLabel">
              <property name="text">
               <string>Max nodes:</string>
              </property>
             </widget>
            </item>
-           <item row="2" column="1">
+           <item row="4" column="1">
             <widget class="QSpinBox" name="selectedNodesPathMaxNodesSpinBox"/>
            </item>
-           <item row="3" column="0">
+           <item row="5" column="0">
             <widget class="QLabel" name="selectedNodesPathModeLabel">
              <property name="text">
               <string>Mode:</string>
              </property>
             </widget>
            </item>
-           <item row="3" column="1">
+           <item row="5" column="1">
             <widget class="QComboBox" name="selectedNodesPathModeComboBox">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <item>
               <property name="text">
                <string>Top-K (fast)</string>
@@ -2141,21 +2199,160 @@
              </item>
             </widget>
            </item>
-           <item row="4" column="0">
+           <item row="6" column="0">
+            <widget class="QLabel" name="selectedNodesPathCoverageTagLabel">
+             <property name="text">
+              <string>Coverage tag:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="1">
+            <widget class="QComboBox" name="selectedNodesPathCoverageTagComboBox">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+            </widget>
+           </item>
+           <item row="7" column="0">
+            <widget class="QLabel" name="selectedNodesPathMaxCopyLabel">
+             <property name="text">
+              <string>Max copies:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="7" column="1">
+            <widget class="QSpinBox" name="selectedNodesPathMaxCopySpinBox">
+             <property name="minimum"><number>1</number></property>
+             <property name="maximum"><number>100</number></property>
+             <property name="value"><number>8</number></property>
+            </widget>
+           </item>
+           <item row="8" column="0">
+            <widget class="QLabel" name="selectedNodesPathBeamResultsLabel">
+             <property name="text">
+              <string>Beam results:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="8" column="1">
+            <widget class="QSpinBox" name="selectedNodesPathBeamResultsSpinBox">
+             <property name="minimum"><number>1</number></property>
+             <property name="maximum"><number>100</number></property>
+             <property name="value"><number>10</number></property>
+            </widget>
+           </item>
+           <item row="9" column="0">
+            <widget class="QLabel" name="selectedNodesPathGafScopeLabel">
+             <property name="text">
+              <string>GAF evidence:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="9" column="1">
+            <widget class="QComboBox" name="selectedNodesPathGafScopeComboBox">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="sizeAdjustPolicy">
+              <enum>QComboBox::AdjustToMinimumContentsLengthWithIcon</enum>
+             </property>
+             <property name="minimumContentsLength">
+              <number>10</number>
+             </property>
+             <item><property name="text"><string>All loaded alignments</string></property></item>
+             <item><property name="text"><string>Current filtered alignments</string></property></item>
+            </widget>
+           </item>
+           <item row="10" column="0">
+            <widget class="QLabel" name="selectedNodesPathTimeLimitLabel">
+             <property name="text">
+              <string>Time limit (s):</string>
+             </property>
+            </widget>
+           </item>
+           <item row="10" column="1">
+            <widget class="QSpinBox" name="selectedNodesPathTimeLimitSpinBox">
+             <property name="minimum"><number>1</number></property>
+             <property name="maximum"><number>3600</number></property>
+             <property name="value"><number>60</number></property>
+            </widget>
+           </item>
+           <item row="1" column="0" colspan="2">
+            <widget class="QWidget" name="selectedNodesPathAdvancedConfigWidget" native="true">
+             <layout class="QHBoxLayout" name="horizontalLayout_selectedNodesPathAdvancedConfig">
+              <property name="spacing"><number>6</number></property>
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+               <spacer name="horizontalSpacer_selectedNodesPathAdvancedConfigLeft">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QPushButton" name="selectedNodesPathAdvancedConfigButton">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                  <horstretch>0</horstretch><verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="minimumSize"><size><width>160</width><height>0</height></size></property>
+                <property name="maximumSize"><size><width>160</width><height>16777215</height></size></property>
+                <property name="text"><string>Advanced configure</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="selectedNodesPathAdvancedConfigWarningLabel">
+                <property name="font"><font><pointsize>14</pointsize><bold>true</bold></font></property>
+                <property name="styleSheet"><string notr="true">color: #d6a000;</string></property>
+                <property name="text"><string>!</string></property>
+                <property name="toolTip"><string>CP-SAT is using non-default advanced parameters.</string></property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_selectedNodesPathAdvancedConfig">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item row="11" column="0" colspan="2">
+            <widget class="QLabel" name="selectedNodesPathStatusLabel">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="wordWrap"><bool>true</bool></property>
+             <property name="text"><string/></property>
+            </widget>
+           </item>
+           <item row="12" column="0">
             <widget class="QPushButton" name="selectedNodesPathReverseButton">
              <property name="text">
               <string>Reverse</string>
              </property>
             </widget>
            </item>
-           <item row="4" column="1">
+           <item row="12" column="1">
             <widget class="QPushButton" name="selectedNodesFindPathsButton">
              <property name="text">
               <string>Find paths</string>
              </property>
             </widget>
            </item>
-           <item row="5" column="0" colspan="2">
+           <item row="13" column="0" colspan="2">
             <widget class="QPushButton" name="selectionModeButton">
              <property name="text">
               <string>Selection mode</string>

@@ -90,6 +90,8 @@ public:
     ~GafPathsDialog();
     QString fileName() const {return m_fileName;}
     int alignmentCount() const {return m_alignments.size();}
+    QList<GafAlignment> allAlignments() const {return m_alignments;}
+    QList<GafAlignment> filteredAlignments() const;
     bool writeFilteredGaf(const QString &fileName, QString * errorMessage = 0) const;
 
 private:

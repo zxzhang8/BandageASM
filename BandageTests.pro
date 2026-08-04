@@ -22,7 +22,34 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 TARGET = BandageTests
 TEMPLATE = app
 
-CONFIG += c++11
+CONFIG += c++17
+
+isEmpty(ORTOOLS_ROOT): ORTOOLS_ROOT = $$(ORTOOLS_ROOT)
+isEmpty(ORTOOLS_ROOT) {
+    error("OR-Tools is required. Pass ORTOOLS_ROOT=C:/path/to/or-tools to qmake. On Windows, use the Qt MSVC 2022 64-bit kit with the official OR-Tools package; MinGW is not binary-compatible.")
+} else {
+    win32-g++: error("The official Windows OR-Tools C++ package requires MSVC 2022 and cannot be linked with the Qt MinGW kit. Select a Qt MSVC 2022 64-bit kit.")
+    !exists($$ORTOOLS_ROOT/include/ortools/sat/cp_model.h): error("ORTOOLS_ROOT does not contain include/ortools/sat/cp_model.h")
+    !exists($$ORTOOLS_ROOT/lib): error("ORTOOLS_ROOT does not contain a lib directory")
+    DEFINES += BANDAGE_WITH_ORTOOLS
+    DEFINES += USE_LP_PARSER USE_MATH_OPT USE_BOP USE_CBC USE_CLP USE_GLOP USE_PDLP USE_SCIP
+    INCLUDEPATH += $$ORTOOLS_ROOT/include
+    win32:!win32-g++ {
+        CONFIG -= c++17
+        CONFIG += c++20
+        DEFINES += OR_BUILD_DLL ABSL_CONSUME_DLL PROTOBUF_USE_DLLS __WIN32__
+        QMAKE_CXXFLAGS += /bigobj /DNOMINMAX /DWIN32_LEAN_AND_MEAN=1 /Zc:preprocessor
+        ORTOOLS_LIB_FILES = $$files($$ORTOOLS_ROOT/lib/*.lib)
+        isEmpty(ORTOOLS_LIB_FILES): error("No .lib files were found under ORTOOLS_ROOT/lib")
+        LIBS += $$ORTOOLS_LIB_FILES ws2_32.lib
+    }
+    unix {
+        DEFINES += OR_PROTO_DLL=
+        QMAKE_CXXFLAGS += -fwrapv
+        LIBS += -L$$ORTOOLS_ROOT/lib -lortools
+    }
+    unix: QMAKE_RPATHDIR += $$ORTOOLS_ROOT/lib
+}
 
 target.path += /usr/local/bin
 INSTALLS += target
@@ -32,6 +59,10 @@ INCLUDEPATH += ui
 SOURCES += \
     program/settings.cpp \
     program/pathsearch.cpp \
+    program/tanglepathsearch.cpp \
+    program/beamsearchtanglepathfinder.cpp \
+    program/cpsattanglepathfinder.cpp \
+    program/tanglepathworker.cpp \
     program/gafparser.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
@@ -129,6 +160,8 @@ HEADERS  += \
     tests/bandagetests.h \
     program/settings.h \
     program/pathsearch.h \
+    program/tanglepathsearch.h \
+    program/tanglepathworker.h \
     program/gafparser.h \
     program/globals.h \
     program/graphlayoutworker.h \

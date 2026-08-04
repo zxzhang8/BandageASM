@@ -449,8 +449,9 @@ PathSearchResult runTopK(const PathSearchRequest &request,
         st.visited = QVector<quint64>(words, 0);
         setBit(st.visited, startId);
 
+        const int stateIndex = static_cast<int>(states.size());
         states.push_back(st);
-        pq.push(PQEntry{states.size() - 1, st.upperBound});
+        pq.push(PQEntry{stateIndex, st.upperBound});
     }
 
     auto kthScore = [&]() -> double
@@ -580,8 +581,9 @@ PathSearchResult runTopK(const PathSearchRequest &request,
             child.visited = st.visited;
             setBit(child.visited, next);
 
+            const int childIndex = static_cast<int>(states.size());
             states.push_back(child);
-            pq.push(PQEntry{states.size() - 1, child.upperBound});
+            pq.push(PQEntry{childIndex, child.upperBound});
             ++result.stats.expandedStates;
         }
     }

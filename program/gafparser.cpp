@@ -20,6 +20,8 @@
 #include <QFile>
 #include <QRegularExpression>
 #include <QTextStream>
+#include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -135,6 +137,26 @@ int safeToInt(const QString &text)
     int value = text.toInt(&ok);
     return ok ? value : -1;
 }
+
+
+qint64 safeToLongLong(const QString &text)
+{
+    bool ok = false;
+    qint64 value = text.toLongLong(&ok);
+    return ok ? value : -1;
+}
+
+
+QString optionalTagValue(const QStringList &fields, const QString &wanted)
+{
+    for (int i = 12; i < fields.size(); ++i)
+    {
+        const QStringList parts = fields[i].split(':');
+        if (parts.size() >= 3 && parts[0] == wanted)
+            return fields[i].section(':', 2);
+    }
+    return QString();
+}
 }
 
 
@@ -189,13 +211,30 @@ GafParseResult parseGafFile(const QString &fileName)
         GafAlignment alignment;
         alignment.rawLine = line;
         alignment.queryName = fields[0];
-        alignment.queryLength = fields.size() > 1 ? safeToInt(fields[1]) : -1;
-        alignment.queryStart = fields.size() > 2 ? safeToInt(fields[2]) : -1;
-        alignment.queryEnd = fields.size() > 3 ? safeToInt(fields[3]) : -1;
+        alignment.queryLength = fields.size() > 1 ? safeToLongLong(fields[1]) : -1;
+        alignment.queryStart = fields.size() > 2 ? safeToLongLong(fields[2]) : -1;
+        alignment.queryEnd = fields.size() > 3 ? safeToLongLong(fields[3]) : -1;
         alignment.strand = fields[4];
         alignment.rawPathField = fields[5];
         alignment.bandagePathString = bandagePathString;
         alignment.mappingQuality = fields.size() > 11 ? safeToInt(fields[11]) : -1;
+        alignment.residueMatches = fields.size() > 9 ? safeToInt(fields[9]) : -1;
+        alignment.blockLength = fields.size() > 10 ? safeToInt(fields[10]) : -1;
+        QString alignmentScore = optionalTagValue(fields, "AS");
+        if (!alignmentScore.isEmpty())
+        {
+            bool scoreOk = false;
+            alignment.alignmentScore = alignmentScore.toDouble(&scoreOk);
+            alignment.hasAlignmentScore = scoreOk && std::isfinite(alignment.alignmentScore);
+        }
+        QString identity = optionalTagValue(fields, "id");
+        bool identityOk = false;
+        if (!identity.isEmpty())
+            alignment.identity = identity.toDouble(&identityOk);
+        if (!identityOk && alignment.residueMatches >= 0 && alignment.blockLength > 0)
+            alignment.identity = double(alignment.residueMatches) / alignment.blockLength;
+        if (alignment.identity >= 0.0)
+            alignment.identity = std::max(0.0, std::min(1.0, alignment.identity));
         alignment.lineNumber = lineNumber;
         alignment.path = path;
 

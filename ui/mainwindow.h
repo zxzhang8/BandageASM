@@ -33,6 +33,7 @@
 #include <QThread>
 #include "../ogdf/energybased/FMMMLayout.h"
 #include <QTabWidget>
+#include "../program/tanglepathsearch.h"
 
 class GraphicsViewZoom;
 class MyGraphicsScene;
@@ -44,6 +45,7 @@ class GafPathsDialog;
 class SelectedEdgePathWidget;
 class NodeSequenceWidget;
 class SelectedNodesPathsWidget;
+class CpSatAdvancedConfigWidget;
 class QDockWidget;
 class BandageTests;
 
@@ -77,6 +79,8 @@ private:
     SelectedEdgePathWidget * m_selectedEdgePathWidget;
     NodeSequenceWidget * m_nodeSequenceWidget;
     SelectedNodesPathsWidget * m_selectedNodesPathsWidget;
+    CpSatAdvancedConfigWidget * m_cpSatAdvancedConfigWidget;
+    TanglePathParameters m_cpSatParameters;
     bool m_alreadyShown;
 
     enum GafReplacementMode {CONFIRM_GAF_REPLACEMENT, FORCE_GAF_REPLACEMENT};
@@ -115,7 +119,13 @@ private:
     void updateSelectedNodesPathControls(const std::vector<DeBruijnNode *> &selectedNodes);
     Path makePathFromSelectedEdges(QString * errorMessage, QStringList * errorDetails) const;
     void showSelectedEdgePathTab(const Path &path);
-    void showSelectedNodesPathsTab(const QList<Path> &paths);
+    void showSelectedNodesPathsTab(const QList<Path> &paths,
+                                   const QString &algorithm = QString(),
+                                   const QString &status = QString(),
+                                   const QList<TanglePathCandidate> &candidateDetails =
+                                       QList<TanglePathCandidate>());
+    void closeCpSatAdvancedConfigTab();
+    bool cpSatAdvancedConfigIsDefault() const;
     void setStartingNodesWidgetVisibility(bool visible);
     void setNodeDistanceWidgetVisibility(bool visible);
     void setDepthRangeWidgetVisibility(bool visible);
@@ -191,6 +201,8 @@ private slots:
     void findPathsInSelectedNodes();
     void reverseSelectedNodesPathEndpoints();
     void selectionModeToggled(bool enabled);
+    void selectedNodesPathAlgorithmChanged();
+    void openCpSatAdvancedConfig();
     void nodeWidthChanged();
     void saveEntireGraphToFasta();
     void saveEntireGraphToFastaOnlyPositiveNodes();

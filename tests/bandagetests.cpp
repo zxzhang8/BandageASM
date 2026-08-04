@@ -42,6 +42,7 @@
 #include "../program/globals.h"
 #include "../command_line/commoncommandlinefunctions.h"
 #include "../program/gafparser.h"
+#include "../program/tanglepathsearch.h"
 #include "../ui/gafpathsdialog.h"
 #include "../ui/mainwindow.h"
 #include "../ui/nodesequencewidget.h"
@@ -1158,6 +1159,93 @@ void BandageTests::gfaTagNodeLabels()
     tagComboBox->setCurrentText("SC");
     window.setTextDisplaySettings();
     QCOMPARE(alphaItem.getNodeText(), QStringList() << "1.5");
+}
+
+
+void BandageTests::tangleBeamSearchAndGafClipping()
+{
+    createGlobals();
+
+    QTemporaryFile gfaFile(QDir::tempPath() + "/bandage-tangle-XXXXXX.gfa");
+    QVERIFY(gfaFile.open());
+    QTextStream gfa(&gfaFile);
+    gfa << "H\tVN:Z:1.0\n";
+    gfa << "S\tX\tAAAA\trd:i:10\n";
+    gfa << "S\tA\tAAAA\trd:i:10\n";
+    gfa << "S\tB\tAAAA\trd:i:10\n";
+    gfa << "S\tC\tAAAA\trd:i:10\n";
+    gfa << "S\tD\tAAAA\trd:i:10\n";
+    gfa << "S\tY\tAAAA\trd:i:10\n";
+    gfa << "L\tX\t+\tA\t+\t0M\n";
+    gfa << "L\tA\t+\tB\t+\t0M\n";
+    gfa << "L\tA\t+\tC\t+\t0M\n";
+    gfa << "L\tB\t+\tD\t+\t0M\n";
+    gfa << "L\tC\t+\tD\t+\t0M\n";
+    gfa << "L\tD\t+\tY\t+\t0M\n";
+    gfa.flush();
+    gfaFile.close();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(gfaFile.fileName()));
+
+    std::vector<DeBruijnNode *> selectedNodes;
+    selectedNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes.value("A+"));
+    selectedNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes.value("B+"));
+    selectedNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes.value("C+"));
+    selectedNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes.value("D+"));
+    QCOMPARE(commonNumericGfaTags(selectedNodes), QStringList() << "rd");
+
+    TangleGraph graph;
+    QStringList invalidCoverageNodes;
+    QString graphError;
+    QVERIFY(buildTangleGraph(selectedNodes, "rd", &graph,
+                             &invalidCoverageNodes, &graphError));
+    QVERIFY2(graphError.isEmpty(), qPrintable(graphError));
+    QCOMPARE(graph.segments.size(), 4);
+
+    TanglePathSearchRequest request;
+    request.algorithm = TANGLE_PATH_BEAM_SEARCH;
+    request.graph = graph;
+    request.source = "A";
+    request.target = "D";
+    request.parameters.topK = 10;
+    const TanglePathSearchResult result = runBeamTanglePathSearch(request);
+    QVERIFY2(result.errorMessage.isEmpty(), qPrintable(result.errorMessage));
+
+    QStringList paths;
+    for (int i = 0; i < result.candidates.size(); ++i)
+        paths << result.candidates[i].orientedNodeNames.join(",");
+    QVERIFY(paths.contains("A+,B+,D+"));
+    QVERIFY(paths.contains("A+,C+,D+"));
+
+    QTemporaryFile gafFile(QDir::tempPath() + "/bandage-tangle-XXXXXX.gaf");
+    QVERIFY(gafFile.open());
+    QTextStream gaf(&gafFile);
+    gaf << "read1\t1000\t0\t1000\t+\t>X>A>B>D>Y\t24\t0\t24\t990\t1000\t60\tAS:i:990\n";
+    gaf.flush();
+    gafFile.close();
+    const GafParseResult parsed = parseGafFile(gafFile.fileName());
+    QCOMPARE(parsed.alignments.size(), 1);
+    QVERIFY(parsed.alignments.first().hasCpSatMetrics());
+
+    int discardedAlignmentCount = 0;
+    const QVector<TangleReadAlignment> clipped = extractTangleReadAlignments(
+                parsed.alignments, graph, &discardedAlignmentCount);
+    QCOMPARE(discardedAlignmentCount, 0);
+    QCOMPARE(clipped.size(), 1);
+    QStringList clippedPath;
+    for (int i = 0; i < clipped.first().path.size(); ++i)
+        clippedPath << graph.label(clipped.first().path[i]);
+    QCOMPARE(clippedPath, QStringList() << "A+" << "B+" << "D+");
+
+#ifdef BANDAGE_WITH_ORTOOLS
+    request.algorithm = TANGLE_PATH_CP_SAT;
+    request.readAlignments = clipped;
+    request.parameters.timeLimitSeconds = 10.0;
+    const TanglePathSearchResult cpResult = runCpSatTanglePathSearch(request);
+    QVERIFY2(cpResult.errorMessage.isEmpty(), qPrintable(cpResult.errorMessage));
+    QCOMPARE(cpResult.candidates.size(), 1);
+    QCOMPARE(cpResult.candidates.first().orientedNodeNames,
+             QStringList() << "A+" << "B+" << "D+");
+#endif
 }
 
 

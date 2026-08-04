@@ -25,17 +25,43 @@
 
 struct GafAlignment
 {
+    GafAlignment()
+        : lineNumber(-1),
+          queryStart(-1),
+          queryEnd(-1),
+          queryLength(-1),
+          mappingQuality(-1),
+          residueMatches(-1),
+          blockLength(-1),
+          hasAlignmentScore(false),
+          alignmentScore(0.0),
+          identity(-1.0)
+    {
+    }
+
     QString rawLine;
     QString queryName;
     QString strand;
     QString rawPathField;
     QString bandagePathString;
     int lineNumber;
-    int queryStart;
-    int queryEnd;
-    int queryLength;
+    qint64 queryStart;
+    qint64 queryEnd;
+    qint64 queryLength;
     int mappingQuality;
+    int residueMatches;
+    int blockLength;
+    bool hasAlignmentScore;
+    double alignmentScore;
+    double identity;
     Path path;
+
+    bool hasCpSatMetrics() const
+    {
+        return queryLength > 0 && queryStart >= 0 && queryEnd >= queryStart &&
+                queryEnd <= queryLength && residueMatches >= 0 && blockLength > 0 &&
+                mappingQuality >= 0 && identity >= 0.0;
+    }
 };
 
 struct GafParseResult

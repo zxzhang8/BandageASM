@@ -65,6 +65,7 @@
 #include "gafpathsdialog.h"
 #include "../program/gafparser.h"
 #include "../program/pathsearch.h"
+#include "../program/tanglepathworker.h"
 #include "changenodenamedialog.h"
 #include "changenodedepthdialog.h"
 #include <limits>
@@ -72,6 +73,7 @@
 #include "selectededgepathwidget.h"
 #include "nodesequencewidget.h"
 #include "selectednodespathswidget.h"
+#include "cpsatadvancedconfigwidget.h"
 #include <QHash>
 #include <QQueue>
 #include <QSet>
@@ -83,9 +85,11 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     ui(new Ui::MainWindow), m_layoutThread(0), m_imageFilter("PNG (*.png)"),
     m_fileToLoadOnStartup(fileToLoadOnStartup), m_drawGraphAfterLoad(drawGraphAfterLoad),
     m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafPathsWidget(0),
-    m_selectedEdgePathWidget(0), m_nodeSequenceWidget(0), m_selectedNodesPathsWidget(0), m_alreadyShown(false)
+    m_selectedEdgePathWidget(0), m_nodeSequenceWidget(0), m_selectedNodesPathsWidget(0),
+    m_cpSatAdvancedConfigWidget(0), m_alreadyShown(false)
 {
     ui->setupUi(this);
+    ui->gridLayout_selectedNodesPaths->setColumnStretch(1, 1);
 
     // Wrap the original central widget into a tab widget so we can add a GAF tab.
     QWidget * oldCentral = takeCentralWidget();
@@ -121,6 +125,8 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     ui->selectedNodesPathModeComboBox->setCurrentIndex(0);
     ui->selectedNodesPathModeComboBox->setToolTip("Top-K (fast): returns highest-scoring paths quickly. "
                                                   "Enumerate all: exhaustive search with limits.");
+    ui->selectedNodesPathAlgorithmComboBox->setCurrentIndex(0);
+    qRegisterMetaType<TanglePathSearchResult>("TanglePathSearchResult");
 
     setUiState(NO_GRAPH_LOADED);
 
@@ -212,6 +218,10 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->selectedEdgesGenSeqButton, SIGNAL(clicked()), this, SLOT(generateSequenceFromSelectedEdges()));
     connect(ui->selectedNodesPathReverseButton, SIGNAL(clicked()), this, SLOT(reverseSelectedNodesPathEndpoints()));
     connect(ui->selectedNodesFindPathsButton, SIGNAL(clicked()), this, SLOT(findPathsInSelectedNodes()));
+    connect(ui->selectedNodesPathAlgorithmComboBox, SIGNAL(currentIndexChanged(int)),
+            this, SLOT(selectedNodesPathAlgorithmChanged()));
+    connect(ui->selectedNodesPathAdvancedConfigButton, SIGNAL(clicked()),
+            this, SLOT(openCpSatAdvancedConfig()));
     connect(ui->selectionModeButton, SIGNAL(toggled(bool)), this, SLOT(selectionModeToggled(bool)));
     connect(ui->nodeWidthSpinBox, SIGNAL(valueChanged(double)), this, SLOT(nodeWidthChanged()));
     connect(g_graphicsView, SIGNAL(copySelectedSequencesToClipboard()), this, SLOT(copySelectedSequencesToClipboard()));
@@ -345,6 +355,9 @@ void MainWindow::clearManagedTabs()
 
     removeManagedTab(m_selectedNodesPathsWidget);
     m_selectedNodesPathsWidget = 0;
+
+    removeManagedTab(m_cpSatAdvancedConfigWidget);
+    m_cpSatAdvancedConfigWidget = 0;
 
     removeManagedTab(m_gafPathsWidget);
     m_gafPathsWidget = 0;
@@ -567,6 +580,7 @@ MainWindow::GafLoadResult MainWindow::loadGafPathsFile(const QString &fileName,
     connect(m_gafPathsWidget, SIGNAL(highlightRequested()), this, SLOT(focusOnGafSelection()));
     connect(m_gafPathsWidget, SIGNAL(clearHighlightRequested()), this, SLOT(clearGafHighlighting()));
 
+    updateSelectedNodesPathControls(m_scene->getSelectedNodes());
     m_tabWidget->setCurrentWidget(m_gafPathsWidget);
     return GAF_LOADED;
 }
@@ -800,7 +814,10 @@ void MainWindow::showSelectedEdgePathTab(const Path &path)
     m_tabWidget->setCurrentWidget(m_selectedEdgePathWidget);
 }
 
-void MainWindow::showSelectedNodesPathsTab(const QList<Path> &paths)
+void MainWindow::showSelectedNodesPathsTab(const QList<Path> &paths,
+                                           const QString &algorithm,
+                                           const QString &status,
+                                           const QList<TanglePathCandidate> &candidateDetails)
 {
     if (m_tabWidget == 0)
         return;
@@ -808,7 +825,8 @@ void MainWindow::showSelectedNodesPathsTab(const QList<Path> &paths)
     removeManagedTab(m_selectedNodesPathsWidget);
     m_selectedNodesPathsWidget = 0;
 
-    m_selectedNodesPathsWidget = new SelectedNodesPathsWidget(m_tabWidget, paths);
+    m_selectedNodesPathsWidget = new SelectedNodesPathsWidget(
+                m_tabWidget, paths, algorithm, status, candidateDetails);
     m_tabWidget->addTab(m_selectedNodesPathsWidget, "Selected node paths");
 
     connect(m_selectedNodesPathsWidget, SIGNAL(selectionChanged()), g_graphicsView->viewport(), SLOT(update()));
@@ -880,6 +898,126 @@ void MainWindow::findPathsInSelectedNodes()
     if (startBase == endBase)
     {
         QMessageBox::information(this, "Invalid selection", "Start and end nodes must be different.");
+        return;
+    }
+
+    const int selectedAlgorithm = ui->selectedNodesPathAlgorithmComboBox->currentIndex();
+    if (selectedAlgorithm == 1 || selectedAlgorithm == 2)
+    {
+        const QString coverageTag = ui->selectedNodesPathCoverageTagComboBox->currentText();
+        if (coverageTag.isEmpty())
+        {
+            QMessageBox::information(this, "Coverage tag required",
+                                     "No numeric GFA tag is available on every selected node.");
+            return;
+        }
+
+        TanglePathSearchRequest tangleRequest;
+        tangleRequest.algorithm = selectedAlgorithm == 1
+                ? TANGLE_PATH_BEAM_SEARCH : TANGLE_PATH_CP_SAT;
+        tangleRequest.source = startBase;
+        tangleRequest.target = endBase;
+        if (selectedAlgorithm == 2)
+            tangleRequest.parameters = m_cpSatParameters;
+        tangleRequest.parameters.maxCopy = ui->selectedNodesPathMaxCopySpinBox->value();
+        tangleRequest.parameters.topK = ui->selectedNodesPathBeamResultsSpinBox->value();
+        tangleRequest.parameters.timeLimitSeconds = ui->selectedNodesPathTimeLimitSpinBox->value();
+
+        QStringList invalidCoverageNodes;
+        QString graphError;
+        if (!buildTangleGraph(selectedNodes, coverageTag, &tangleRequest.graph,
+                              &invalidCoverageNodes, &graphError))
+        {
+            if (!invalidCoverageNodes.isEmpty())
+                graphError += "\n\nNodes: " + invalidCoverageNodes.join(", ");
+            QMessageBox::information(this, "Cannot build tangle subgraph", graphError);
+            return;
+        }
+
+        if (selectedAlgorithm == 2)
+        {
+            if (m_gafPathsWidget == 0)
+            {
+                QMessageBox::information(this, "GAF required",
+                                         "Load a read-to-graph GAF file before running CP-SAT.");
+                return;
+            }
+            const QList<GafAlignment> evidenceSource =
+                    ui->selectedNodesPathGafScopeComboBox->currentIndex() == 1
+                    ? m_gafPathsWidget->filteredAlignments()
+                    : m_gafPathsWidget->allAlignments();
+            int incompleteAlignments = 0;
+            tangleRequest.readAlignments = extractTangleReadAlignments(
+                        evidenceSource, tangleRequest.graph, &incompleteAlignments);
+            if (tangleRequest.readAlignments.isEmpty())
+            {
+                QString message = "No usable multi-node GAF path remains after clipping to the selected subgraph.";
+                if (incompleteAlignments > 0)
+                    message += "\n\n" + QString::number(incompleteAlignments) +
+                            " alignment(s) lacked the numeric fields required by CP-SAT.";
+                QMessageBox::information(this, "No CP-SAT read evidence", message);
+                return;
+            }
+        }
+
+        const QString algorithmName = selectedAlgorithm == 1 ? "Beam search" : "CP-SAT";
+        MyProgressDialog progress(this, "Running " + algorithmName + "...", true,
+                                  "Cancel search", "Cancelling search...",
+                                  "The search uses only the currently selected subgraph.");
+        progress.setMaxValue(0);
+        QThread workerThread;
+        TanglePathWorker worker(tangleRequest);
+        worker.moveToThread(&workerThread);
+        TanglePathSearchResult tangleResult;
+        bool workerFinished = false;
+        connect(&workerThread, SIGNAL(started()), &worker, SLOT(run()));
+        connect(&progress, SIGNAL(halt()), &worker, SLOT(cancel()), Qt::DirectConnection);
+        connect(&worker, &TanglePathWorker::finished, &progress,
+                [&](const TanglePathSearchResult &finishedResult)
+                {
+                    tangleResult = finishedResult;
+                    workerFinished = true;
+                    progress.accept();
+                });
+        connect(&worker, &TanglePathWorker::finished,
+                &workerThread, &QThread::quit);
+        workerThread.start();
+        progress.exec();
+        if (!workerFinished)
+            worker.cancel();
+        workerThread.quit();
+        workerThread.wait();
+
+        if (tangleResult.cancelled || !workerFinished)
+            return;
+        if (!tangleResult.errorMessage.isEmpty())
+        {
+            QMessageBox::information(this, algorithmName + " failed",
+                                     tangleResult.errorMessage);
+            return;
+        }
+
+        QList<Path> paths;
+        QList<TanglePathCandidate> validDetails;
+        for (int i = 0; i < tangleResult.candidates.size(); ++i)
+        {
+            QString pathFailure;
+            Path path = Path::makeFromString(
+                        tangleResult.candidates[i].orientedNodeNames.join(", "),
+                        false, &pathFailure);
+            if (!path.isEmpty())
+            {
+                paths << path;
+                validDetails << tangleResult.candidates[i];
+            }
+        }
+        if (paths.isEmpty())
+        {
+            QMessageBox::information(this, algorithmName + " failed",
+                                     "The algorithm returned no path that is valid in the loaded graph.");
+            return;
+        }
+        showSelectedNodesPathsTab(paths, algorithmName, tangleResult.status, validDetails);
         return;
     }
 
@@ -1112,9 +1250,11 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     QSignalBlocker blockEnd(ui->selectedNodesPathEndComboBox);
     QSignalBlocker blockMaxNodes(ui->selectedNodesPathMaxNodesSpinBox);
     QSignalBlocker blockMode(ui->selectedNodesPathModeComboBox);
+    QSignalBlocker blockCoverage(ui->selectedNodesPathCoverageTagComboBox);
 
     QString currentStartName = ui->selectedNodesPathStartComboBox->currentData().toString();
     QString currentEndName = ui->selectedNodesPathEndComboBox->currentData().toString();
+    QString currentCoverageTag = ui->selectedNodesPathCoverageTagComboBox->currentText();
 
     ui->selectedNodesPathStartComboBox->clear();
     ui->selectedNodesPathEndComboBox->clear();
@@ -1132,12 +1272,81 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     }
 
     bool enable = baseNames.size() >= 2;
+    const int algorithm = ui->selectedNodesPathAlgorithmComboBox->currentIndex();
+    const bool standard = algorithm == 0;
+    const bool beam = algorithm == 1;
+    const bool cpSat = algorithm == 2;
+
+    ui->selectedNodesPathMaxNodesLabel->setVisible(standard);
+    ui->selectedNodesPathMaxNodesSpinBox->setVisible(standard);
+    ui->selectedNodesPathModeLabel->setVisible(standard);
+    ui->selectedNodesPathModeComboBox->setVisible(standard);
+    ui->selectedNodesPathCoverageTagLabel->setVisible(!standard);
+    ui->selectedNodesPathCoverageTagComboBox->setVisible(!standard);
+    ui->selectedNodesPathMaxCopyLabel->setVisible(!standard);
+    ui->selectedNodesPathMaxCopySpinBox->setVisible(!standard);
+    ui->selectedNodesPathBeamResultsLabel->setVisible(beam);
+    ui->selectedNodesPathBeamResultsSpinBox->setVisible(beam);
+    ui->selectedNodesPathGafScopeLabel->setVisible(cpSat);
+    ui->selectedNodesPathGafScopeComboBox->setVisible(cpSat);
+    ui->selectedNodesPathTimeLimitLabel->setVisible(cpSat);
+    ui->selectedNodesPathTimeLimitSpinBox->setVisible(cpSat);
+    ui->selectedNodesPathAdvancedConfigWidget->setVisible(cpSat);
+    const bool customCpSatConfig = !cpSatAdvancedConfigIsDefault();
+    ui->selectedNodesPathAdvancedConfigWarningLabel->setVisible(customCpSatConfig);
+
+    const QStringList coverageTags = commonNumericGfaTags(selectedNodes);
+    ui->selectedNodesPathCoverageTagComboBox->clear();
+    ui->selectedNodesPathCoverageTagComboBox->addItems(coverageTags);
+    int coverageIndex = ui->selectedNodesPathCoverageTagComboBox->findText(currentCoverageTag);
+    if (coverageIndex < 0)
+    {
+        for (int i = 0; i < coverageTags.size(); ++i)
+        {
+            if (coverageTags[i].compare("rd", Qt::CaseInsensitive) == 0)
+            {
+                coverageIndex = i;
+                if (coverageTags[i] == "rd")
+                    break;
+            }
+        }
+    }
+    if (coverageIndex < 0 && !coverageTags.isEmpty())
+        coverageIndex = 0;
+    ui->selectedNodesPathCoverageTagComboBox->setCurrentIndex(coverageIndex);
+
     ui->selectedNodesPathStartComboBox->setEnabled(enable);
     ui->selectedNodesPathEndComboBox->setEnabled(enable);
-    ui->selectedNodesFindPathsButton->setEnabled(enable);
     ui->selectedNodesPathReverseButton->setEnabled(enable);
     ui->selectedNodesPathMaxNodesSpinBox->setEnabled(enable);
     ui->selectedNodesPathModeComboBox->setEnabled(enable);
+    ui->selectedNodesPathCoverageTagComboBox->setEnabled(enable && !coverageTags.isEmpty());
+    ui->selectedNodesPathMaxCopySpinBox->setEnabled(enable);
+    ui->selectedNodesPathBeamResultsSpinBox->setEnabled(enable);
+    ui->selectedNodesPathGafScopeComboBox->setEnabled(enable && m_gafPathsWidget != 0);
+    ui->selectedNodesPathTimeLimitSpinBox->setEnabled(enable);
+
+    QString status;
+    bool prerequisitesMet = enable;
+    if (!standard && coverageTags.isEmpty())
+    {
+        status = "No numeric GFA tag is available on every selected node.";
+        prerequisitesMet = false;
+    }
+    else if (cpSat && m_gafPathsWidget == 0)
+    {
+        status = "Load a GAF file before running CP-SAT.";
+        prerequisitesMet = false;
+    }
+    else if (beam)
+        status = "Beam search uses the selected subgraph and coverage values only.";
+    else if (cpSat)
+        status = "CP-SAT will clip loaded GAF paths to continuous runs inside the selected subgraph.";
+    if (cpSat && customCpSatConfig)
+        status += " Advanced configuration is active (non-default values).";
+    ui->selectedNodesPathStatusLabel->setText(status);
+    ui->selectedNodesPathStatusLabel->setVisible(!standard);
+    ui->selectedNodesFindPathsButton->setEnabled(prerequisitesMet);
 
     if (!enable)
         return;
@@ -1167,6 +1376,61 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     else if (baseNames.size() > 1)
         ui->selectedNodesPathEndComboBox->setCurrentIndex(1);
 
+}
+
+
+void MainWindow::selectedNodesPathAlgorithmChanged()
+{
+    updateSelectedNodesPathControls(m_scene->getSelectedNodes());
+}
+
+bool MainWindow::cpSatAdvancedConfigIsDefault() const
+{
+    const TanglePathParameters defaults;
+    return m_cpSatParameters.coverageDispersion == defaults.coverageDispersion &&
+            m_cpSatParameters.cpHuberDelta == defaults.cpHuberDelta &&
+            m_cpSatParameters.fullThreadFraction == defaults.fullThreadFraction &&
+            m_cpSatParameters.contextFraction == defaults.contextFraction &&
+            m_cpSatParameters.contextMin == defaults.contextMin &&
+            m_cpSatParameters.contextMax == defaults.contextMax &&
+            m_cpSatParameters.asFraction == defaults.asFraction &&
+            m_cpSatParameters.coverageWeight == defaults.coverageWeight &&
+            m_cpSatParameters.readWeight == defaults.readWeight &&
+            m_cpSatParameters.randomSeed == defaults.randomSeed;
+}
+
+void MainWindow::openCpSatAdvancedConfig()
+{
+    if (m_tabWidget == 0)
+        return;
+    if (m_cpSatAdvancedConfigWidget != 0)
+    {
+        m_tabWidget->setCurrentWidget(m_cpSatAdvancedConfigWidget);
+        return;
+    }
+
+    m_cpSatAdvancedConfigWidget = new CpSatAdvancedConfigWidget(
+                m_tabWidget, m_cpSatParameters);
+    m_tabWidget->addTab(m_cpSatAdvancedConfigWidget, "CP-SAT advanced config");
+    connect(m_cpSatAdvancedConfigWidget, &CpSatAdvancedConfigWidget::accepted,
+            this, [this](const TanglePathParameters &parameters)
+            {
+                m_cpSatParameters = parameters;
+                updateSelectedNodesPathControls(m_scene->getSelectedNodes());
+            });
+    connect(m_cpSatAdvancedConfigWidget, &CpSatAdvancedConfigWidget::closeRequested,
+            this, &MainWindow::closeCpSatAdvancedConfigTab);
+    m_tabWidget->setCurrentWidget(m_cpSatAdvancedConfigWidget);
+}
+
+void MainWindow::closeCpSatAdvancedConfigTab()
+{
+    if (m_cpSatAdvancedConfigWidget == 0)
+        return;
+    removeManagedTab(m_cpSatAdvancedConfigWidget);
+    m_cpSatAdvancedConfigWidget = 0;
+    if (m_tabWidget != 0 && m_tabWidget->count() > 0)
+        m_tabWidget->setCurrentIndex(0);
 }
 
 Path MainWindow::makePathFromSelectedEdges(QString * errorMessage, QStringList * errorDetails) const
