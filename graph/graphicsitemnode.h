@@ -43,7 +43,7 @@ public:
                      GraphicsItemNode * toCopy,
                      QGraphicsItem * parent = 0);
     GraphicsItemNode(DeBruijnNode * deBruijnNode,
-                     std::vector<QPointF> linePoints,
+                     const std::vector<QPointF> &linePoints,
                      QGraphicsItem * parent = 0);
 
     DeBruijnNode * m_deBruijnNode;

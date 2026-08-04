@@ -17,6 +17,7 @@
 
 
 #include "assemblygraph.h"
+#include "../program/graphlayoutio.h"
 #include <QMapIterator>
 #include "../program/globals.h"
 #include "../program/settings.h"
@@ -2166,6 +2167,80 @@ void AssemblyGraph::addGraphicsItemsToScene(MyGraphicsScene * scene)
         k.next();
         DeBruijnNode * node = k.value();
         if (node->hasGraphicsItem())
+            scene->addItem(node->getGraphicsItemNode());
+    }
+}
+
+
+void AssemblyGraph::applySavedLayout(const SavedGraphLayout &layout, MyGraphicsScene *scene)
+{
+    clearOgdfGraphAndResetNodes();
+    resetEdges();
+
+    QMapIterator<QString, std::vector<QPointF> > savedNode(layout.nodePoints);
+    while (savedNode.hasNext())
+    {
+        savedNode.next();
+        DeBruijnNode *node = m_deBruijnGraphNodes.value(savedNode.key(), 0);
+        if (node != 0)
+            node->setAsDrawn();
+    }
+
+    savedNode.toFront();
+    while (savedNode.hasNext())
+    {
+        savedNode.next();
+        DeBruijnNode *node = m_deBruijnGraphNodes.value(savedNode.key(), 0);
+        if (node != 0 && node->thisOrReverseComplementNotInOgdf())
+            node->addToOgdfGraph(m_ogdfGraph, m_graphAttributes, m_edgeArray, 0.0, 0.0);
+    }
+
+    QMapIterator<QPair<DeBruijnNode *, DeBruijnNode *>, DeBruijnEdge *> edge(
+                m_deBruijnGraphEdges);
+    while (edge.hasNext())
+    {
+        edge.next();
+        edge.value()->determineIfDrawn();
+        if (edge.value()->isDrawn())
+            edge.value()->addToOgdfGraph(m_ogdfGraph, m_edgeArray);
+    }
+
+    scene->clear();
+    const double meanDrawnDepth = getMeanDepth(true);
+    savedNode.toFront();
+    while (savedNode.hasNext())
+    {
+        savedNode.next();
+        DeBruijnNode *node = m_deBruijnGraphNodes.value(savedNode.key(), 0);
+        if (node == 0)
+            continue;
+        node->setDepthRelativeToMeanDrawnDepth(
+                    meanDrawnDepth == 0.0 ? 1.0 : node->getDepth() / meanDrawnDepth);
+        GraphicsItemNode *item = new GraphicsItemNode(node, savedNode.value());
+        node->setGraphicsItemNode(item);
+        item->setFlag(QGraphicsItem::ItemIsSelectable);
+        item->setFlag(QGraphicsItem::ItemIsMovable);
+    }
+
+    resetAllNodeColours();
+    edge.toFront();
+    while (edge.hasNext())
+    {
+        edge.next();
+        if (!edge.value()->isDrawn())
+            continue;
+        GraphicsItemEdge *item = new GraphicsItemEdge(edge.value());
+        edge.value()->setGraphicsItemEdge(item);
+        item->setFlag(QGraphicsItem::ItemIsSelectable);
+        scene->addItem(item);
+    }
+
+    savedNode.toFront();
+    while (savedNode.hasNext())
+    {
+        savedNode.next();
+        DeBruijnNode *node = m_deBruijnGraphNodes.value(savedNode.key(), 0);
+        if (node != 0 && node->getGraphicsItemNode() != 0)
             scene->addItem(node->getGraphicsItemNode());
     }
 }

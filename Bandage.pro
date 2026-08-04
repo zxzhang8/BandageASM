@@ -73,6 +73,7 @@ SOURCES += \
     program/beamsearchtanglepathfinder.cpp \
     program/cpsattanglepathfinder.cpp \
     program/tanglepathworker.cpp \
+    program/graphlayoutio.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
     graph/debruijnnode.cpp \
@@ -171,6 +172,7 @@ HEADERS  += \
     program/pathsearch.h \
     program/tanglepathsearch.h \
     program/tanglepathworker.h \
+    program/graphlayoutio.h \
     program/globals.h \
     program/graphlayoutworker.h \
     graph/debruijnnode.h \

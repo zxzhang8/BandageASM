@@ -63,6 +63,7 @@ SOURCES += \
     program/beamsearchtanglepathfinder.cpp \
     program/cpsattanglepathfinder.cpp \
     program/tanglepathworker.cpp \
+    program/graphlayoutio.cpp \
     program/gafparser.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
@@ -154,7 +155,8 @@ SOURCES += \
     ui/nodesequencewidget.cpp \
     ui/gafpathsdialog.cpp \
     ui/selectededgepathwidget.cpp \
-    ui/selectednodespathswidget.cpp
+    ui/selectednodespathswidget.cpp \
+    ui/cpsatadvancedconfigwidget.cpp
 
 HEADERS  += \
     tests/bandagetests.h \
@@ -162,6 +164,7 @@ HEADERS  += \
     program/pathsearch.h \
     program/tanglepathsearch.h \
     program/tanglepathworker.h \
+    program/graphlayoutio.h \
     program/gafparser.h \
     program/globals.h \
     program/graphlayoutworker.h \
@@ -286,7 +289,8 @@ HEADERS  += \
     ui/nodesequencewidget.h \
     ui/gafpathsdialog.h \
     ui/selectededgepathwidget.h \
-    ui/selectednodespathswidget.h
+    ui/selectednodespathswidget.h \
+    ui/cpsatadvancedconfigwidget.h
 
 FORMS    += \
     ui/mainwindow.ui \

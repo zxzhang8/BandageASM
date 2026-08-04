@@ -17,6 +17,7 @@
 
 
 #include <QtTest/QtTest>
+#include <QAction>
 #include <QDebug>
 #include <QComboBox>
 #include <QCheckBox>
@@ -24,6 +25,10 @@
 #include <QFile>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTableWidget>
 #include <QTextStream>
@@ -39,12 +44,15 @@
 #include "../graph/debruijnnode.h"
 #include "../graph/debruijnedge.h"
 #include "../graph/graphicsitemnode.h"
+#include "../graph/graphicsitemedge.h"
 #include "../program/globals.h"
 #include "../command_line/commoncommandlinefunctions.h"
 #include "../program/gafparser.h"
+#include "../program/graphlayoutio.h"
 #include "../program/tanglepathsearch.h"
 #include "../ui/gafpathsdialog.h"
 #include "../ui/mainwindow.h"
+#include "../ui/mygraphicsscene.h"
 #include "../ui/nodesequencewidget.h"
 #include "../ui/selectednodespathswidget.h"
 
@@ -2098,6 +2106,255 @@ bool BandageTests::doCircularSequencesMatch(QByteArray s1, QByteArray s2)
     return false;
 }
 
+
+
+void BandageTests::graphLayoutImportExport()
+{
+    createGlobals();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test.fastg"));
+
+    SavedGraphLayout original;
+    original.doubleMode = false;
+    original.nodePoints.insert("1+", std::vector<QPointF>{QPointF(1.25, -3.5),
+                                                          QPointF(9.0, 12.75)});
+    original.nodePoints.insert("12+", std::vector<QPointF>{QPointF(-4.0, 8.0),
+                                                           QPointF(5.5, 6.25),
+                                                           QPointF(13.0, 7.0)});
+
+    QTemporaryDir layoutDirectory(QDir::tempPath() + "/bandage-layout-XXXXXX");
+    QVERIFY(layoutDirectory.isValid());
+    const QString layoutFilename = layoutDirectory.filePath("graph.layout");
+
+    QString error;
+    QVERIFY2(saveGraphLayout(layoutFilename, *g_assemblyGraph, original, &error),
+             qPrintable(error));
+
+    SavedGraphLayout loaded;
+    QVERIFY2(loadGraphLayout(layoutFilename, *g_assemblyGraph, &loaded, &error),
+             qPrintable(error));
+    QCOMPARE(loaded.doubleMode, original.doubleMode);
+    QCOMPARE(loaded.nodePoints, original.nodePoints);
+
+    g_settings->arrowheadsInSingleMode = 1.0;
+    g_settings->doubleMode = loaded.doubleMode;
+    MyGraphicsScene scene;
+    g_assemblyGraph->applySavedLayout(loaded, &scene);
+    for (auto it = loaded.nodePoints.cbegin(); it != loaded.nodePoints.cend(); ++it)
+    {
+        DeBruijnNode * node = g_assemblyGraph->m_deBruijnGraphNodes.value(it.key());
+        QVERIFY(node != nullptr);
+        QVERIFY(node->getGraphicsItemNode() != nullptr);
+        QCOMPARE(node->getGraphicsItemNode()->m_linePoints, it.value());
+        QVERIFY(node->getGraphicsItemNode()->m_hasArrow);
+    }
+    QVERIFY(g_assemblyGraph->m_deBruijnGraphNodes.value("1-")->getGraphicsItemNode() == nullptr);
+
+    int singleModeEdgeCount = 0;
+    for (DeBruijnEdge *edge : g_assemblyGraph->m_deBruijnGraphEdges)
+    {
+        if (edge->getGraphicsItemEdge() != nullptr)
+            ++singleModeEdgeCount;
+    }
+    QVERIFY(singleModeEdgeCount > 0);
+
+    SavedGraphLayout invalidSingleMode = original;
+    invalidSingleMode.nodePoints.insert("1-", std::vector<QPointF>{QPointF(20.0, 0.0),
+                                                                   QPointF(30.0, 0.0)});
+    QVERIFY(!saveGraphLayout(layoutFilename, *g_assemblyGraph, invalidSingleMode, &error));
+    QVERIFY(error.contains("both orientations", Qt::CaseInsensitive));
+
+    SavedGraphLayout doubleMode;
+    doubleMode.doubleMode = true;
+    doubleMode.nodePoints.insert("1+", std::vector<QPointF>{QPointF(0.0, 0.0),
+                                                            QPointF(10.0, 0.0)});
+    doubleMode.nodePoints.insert("1-", std::vector<QPointF>{QPointF(0.0, 20.0),
+                                                            QPointF(10.0, 20.0)});
+    doubleMode.nodePoints.insert("12+", std::vector<QPointF>{QPointF(30.0, 0.0),
+                                                             QPointF(40.0, 0.0)});
+    doubleMode.nodePoints.insert("12-", std::vector<QPointF>{QPointF(30.0, 20.0),
+                                                             QPointF(40.0, 20.0)});
+    QVERIFY2(saveGraphLayout(layoutFilename, *g_assemblyGraph, doubleMode, &error),
+             qPrintable(error));
+    QVERIFY2(loadGraphLayout(layoutFilename, *g_assemblyGraph, &loaded, &error),
+             qPrintable(error));
+    QVERIFY(loaded.doubleMode);
+    QCOMPARE(loaded.nodePoints, doubleMode.nodePoints);
+
+    g_settings->doubleMode = true;
+    g_assemblyGraph->applySavedLayout(loaded, &scene);
+    for (auto it = loaded.nodePoints.cbegin(); it != loaded.nodePoints.cend(); ++it)
+    {
+        DeBruijnNode *node = g_assemblyGraph->m_deBruijnGraphNodes.value(it.key());
+        QVERIFY(node != nullptr);
+        QVERIFY(node->getGraphicsItemNode() != nullptr);
+        QCOMPARE(node->getGraphicsItemNode()->m_linePoints, it.value());
+        QVERIFY(node->getGraphicsItemNode()->m_hasArrow);
+    }
+
+    QFile jsonFile(layoutFilename);
+    QVERIFY(jsonFile.open(QIODevice::ReadOnly));
+    const QJsonObject validRoot = QJsonDocument::fromJson(jsonFile.readAll()).object();
+    jsonFile.close();
+    QCOMPARE(validRoot.value("version").toInt(), 2);
+
+    auto writeRoot = [&jsonFile, &layoutFilename](const QJsonObject &root) {
+        jsonFile.setFileName(layoutFilename);
+        if (!jsonFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return false;
+        const bool written = jsonFile.write(QJsonDocument(root).toJson(QJsonDocument::Compact)) >= 0;
+        jsonFile.close();
+        return written;
+    };
+
+    SavedGraphLayout unchanged;
+    unchanged.doubleMode = false;
+    unchanged.nodePoints.insert("sentinel", std::vector<QPointF>{QPointF(), QPointF(1.0, 1.0)});
+    const int preservedSceneItemCount = scene.items().size();
+
+    QVERIFY(jsonFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(jsonFile.write("{not valid JSON") > 0);
+    jsonFile.close();
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY(error.contains("Invalid JSON", Qt::CaseInsensitive));
+    QCOMPARE(scene.items().size(), preservedSceneItemCount);
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    QJsonObject legacyRoot = validRoot;
+    legacyRoot.insert("version", 1);
+    QVERIFY(writeRoot(legacyRoot));
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY(error.contains("version 2", Qt::CaseInsensitive));
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    QJsonObject wrongDimensionsRoot = validRoot;
+    QJsonObject wrongDimensions = wrongDimensionsRoot.value("graph").toObject();
+    wrongDimensions.insert("nodeCount", wrongDimensions.value("nodeCount").toInt() + 1);
+    wrongDimensionsRoot.insert("graph", wrongDimensions);
+    QVERIFY(writeRoot(wrongDimensionsRoot));
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY(error.contains("dimensions", Qt::CaseInsensitive));
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    QJsonObject unknownNodeRoot = validRoot;
+    QJsonObject unknownNodes = unknownNodeRoot.value("nodes").toObject();
+    unknownNodes.insert("missing+", QJsonArray{QJsonArray{0.0, 0.0},
+                                               QJsonArray{1.0, 1.0}});
+    unknownNodeRoot.insert("nodes", unknownNodes);
+    QVERIFY(writeRoot(unknownNodeRoot));
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY(error.contains("missing+"));
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    QJsonObject shortLineRoot = validRoot;
+    QJsonObject shortLineNodes = shortLineRoot.value("nodes").toObject();
+    QJsonArray onePoint;
+    QJsonArray oneCoordinate;
+    oneCoordinate.append(0.0);
+    oneCoordinate.append(0.0);
+    onePoint.append(oneCoordinate);
+    shortLineNodes.insert("1+", onePoint);
+    shortLineRoot.insert("nodes", shortLineNodes);
+    QVERIFY(writeRoot(shortLineRoot));
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY2(error.contains("fewer than two", Qt::CaseInsensitive), qPrintable(error));
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    QJsonObject invalidCoordinateRoot = validRoot;
+    QJsonObject invalidCoordinateNodes = invalidCoordinateRoot.value("nodes").toObject();
+    QJsonArray invalidPoints = invalidCoordinateNodes.value("1+").toArray();
+    QJsonArray invalidCoordinate = invalidPoints[0].toArray();
+    invalidCoordinate[0] = "not-a-number";
+    invalidPoints[0] = invalidCoordinate;
+    invalidCoordinateNodes.insert("1+", invalidPoints);
+    invalidCoordinateRoot.insert("nodes", invalidCoordinateNodes);
+    QVERIFY(writeRoot(invalidCoordinateRoot));
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY(error.contains("exactly two numbers", Qt::CaseInsensitive));
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    QJsonObject emptyNodesRoot = validRoot;
+    emptyNodesRoot.insert("nodes", QJsonObject());
+    QVERIFY(writeRoot(emptyNodesRoot));
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY(error.contains("no visible nodes", Qt::CaseInsensitive));
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    QJsonObject singleConflictRoot = validRoot;
+    QJsonObject singleDisplay = singleConflictRoot.value("display").toObject();
+    singleDisplay.insert("doubleMode", false);
+    singleConflictRoot.insert("display", singleDisplay);
+    QVERIFY(writeRoot(singleConflictRoot));
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY(error.contains("both orientations", Qt::CaseInsensitive));
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    QVERIFY(writeRoot(validRoot));
+
+    // A layout belongs to one exact graph.  Rejection must also leave the
+    // caller's existing result untouched.  The sequence check distinguishes
+    // graphs that otherwise have identical names, lengths and topology.
+    DeBruijnNode * changedNode = g_assemblyGraph->m_deBruijnGraphNodes.value("1+");
+    QVERIFY(changedNode != nullptr);
+    QByteArray changedSequence = changedNode->getSequence();
+    QVERIFY(!changedSequence.isEmpty());
+    changedSequence[0] = changedSequence[0] == 'A' ? 'C' : 'A';
+    changedNode->setSequence(changedSequence);
+    QVERIFY(!loadGraphLayout(layoutFilename, *g_assemblyGraph, &unchanged, &error));
+    QVERIFY(error.contains("fingerprint", Qt::CaseInsensitive));
+    QVERIFY(unchanged.nodePoints.contains("sentinel"));
+
+    scene.clear();
+    createGlobals();
+    QTemporaryFile edgeGraphFile(QDir::tempPath() + "/bandage-layout-edges-XXXXXX.gfa");
+    QVERIFY(edgeGraphFile.open());
+    QTextStream edgeGraphOut(&edgeGraphFile);
+    edgeGraphOut << "H\tVN:Z:1.0\n";
+    edgeGraphOut << "S\tA\tAAAA\n";
+    edgeGraphOut << "S\tB\tCCCC\n";
+    edgeGraphOut << "L\tA\t+\tB\t+\t1M\n";
+    edgeGraphOut << "L\tA\t+\tA\t+\t1M\n";
+    edgeGraphOut << "L\tB\t+\tB\t-\t1M\n";
+    edgeGraphOut.flush();
+    edgeGraphFile.close();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(edgeGraphFile.fileName()));
+
+    SavedGraphLayout edgeLayout;
+    edgeLayout.doubleMode = false;
+    edgeLayout.nodePoints.insert("A+", std::vector<QPointF>{QPointF(0.0, 0.0),
+                                                            QPointF(10.0, 0.0)});
+    edgeLayout.nodePoints.insert("B+", std::vector<QPointF>{QPointF(30.0, 0.0),
+                                                            QPointF(40.0, 0.0)});
+    g_settings->doubleMode = false;
+    g_assemblyGraph->applySavedLayout(edgeLayout, &scene);
+    DeBruijnEdge *normalEdge = getEdgeFromNodeNames("A+", "B+");
+    DeBruijnEdge *selfEdge = getEdgeFromNodeNames("A+", "A+");
+    DeBruijnEdge *reverseEdge = getEdgeFromNodeNames("B+", "B-");
+    QVERIFY(normalEdge != nullptr);
+    QVERIFY(selfEdge != nullptr);
+    QVERIFY(reverseEdge != nullptr);
+    QVERIFY(normalEdge->getGraphicsItemEdge() != nullptr);
+    QVERIFY(selfEdge->getGraphicsItemEdge() != nullptr);
+    QVERIFY(reverseEdge->getGraphicsItemEdge() != nullptr);
+    QVERIFY(!normalEdge->getGraphicsItemEdge()->path().isEmpty());
+    QVERIFY(!selfEdge->getGraphicsItemEdge()->path().isEmpty());
+    QVERIFY(!reverseEdge->getGraphicsItemEdge()->path().isEmpty());
+
+    scene.clear();
+    createGlobals();
+    MainWindow window;
+    QAction *loadLayoutAction = window.findChild<QAction *>("actionLoad_layout");
+    QAction *saveLayoutAction = window.findChild<QAction *>("actionSave_layout");
+    QVERIFY(loadLayoutAction != nullptr);
+    QVERIFY(saveLayoutAction != nullptr);
+    QVERIFY(!loadLayoutAction->isEnabled());
+    QVERIFY(!saveLayoutAction->isEnabled());
+    window.setUiState(GRAPH_LOADED);
+    QVERIFY(loadLayoutAction->isEnabled());
+    QVERIFY(!saveLayoutAction->isEnabled());
+    window.setUiState(GRAPH_DRAWN);
+    QVERIFY(loadLayoutAction->isEnabled());
+    QVERIFY(saveLayoutAction->isEnabled());
+}
 
 
 QTEST_MAIN(BandageTests)

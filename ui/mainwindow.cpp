@@ -74,6 +74,7 @@
 #include "nodesequencewidget.h"
 #include "selectednodespathswidget.h"
 #include "cpsatadvancedconfigwidget.h"
+#include "../program/graphlayoutio.h"
 #include <QHash>
 #include <QQueue>
 #include <QSet>
@@ -172,6 +173,8 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->actionSave_image_entire_scene, SIGNAL(triggered()), this, SLOT(saveImageEntireScene()));
     connect(ui->actionSave_custom_colours, SIGNAL(triggered()), this, SLOT(saveCustomColours()));
     connect(ui->actionSave_node_labels, SIGNAL(triggered()), this, SLOT(saveNodeLabels()));
+    connect(ui->actionLoad_layout, SIGNAL(triggered()), this, SLOT(loadGraphLayout()));
+    connect(ui->actionSave_layout, SIGNAL(triggered()), this, SLOT(saveGraphLayout()));
     connect(ui->nodeCustomLabelsCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->nodeNamesCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->nodeLengthsCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
@@ -2166,6 +2169,81 @@ void MainWindow::updateLoadNodeLabelsAction()
     ui->actionLoad_node_labels->setEnabled(hasGraph);
 }
 
+void MainWindow::updateLayoutActions()
+{
+    ui->actionLoad_layout->setEnabled(m_uiState != NO_GRAPH_LOADED);
+    ui->actionSave_layout->setEnabled(m_uiState == GRAPH_DRAWN);
+}
+
+void MainWindow::saveGraphLayout()
+{
+    if (m_uiState != GRAPH_DRAWN)
+        return;
+
+    SavedGraphLayout layout;
+    layout.doubleMode = g_settings->doubleMode;
+    QMapIterator<QString, DeBruijnNode *> node(g_assemblyGraph->m_deBruijnGraphNodes);
+    while (node.hasNext())
+    {
+        node.next();
+        GraphicsItemNode *item = node.value()->getGraphicsItemNode();
+        if (item != 0 && !item->m_linePoints.empty())
+            layout.nodePoints.insert(node.key(), item->m_linePoints);
+    }
+
+    QString baseName = QFileInfo(g_assemblyGraph->m_filename).completeBaseName();
+    if (baseName.isEmpty())
+        baseName = "graph";
+    QString fileName = QFileDialog::getSaveFileName(
+                this, "Save graph layout",
+                g_memory->rememberedPath + "/" + baseName + ".layout",
+                "BandageASM layout (*.layout)");
+    if (fileName.isEmpty())
+        return;
+    if (QFileInfo(fileName).suffix().isEmpty())
+        fileName += ".layout";
+
+    QString errorMessage;
+    if (!::saveGraphLayout(fileName, *g_assemblyGraph, layout, &errorMessage))
+    {
+        QMessageBox::warning(this, "Could not save layout", errorMessage);
+        return;
+    }
+    g_memory->rememberedPath = QFileInfo(fileName).absolutePath();
+}
+
+void MainWindow::loadGraphLayout()
+{
+    if (m_uiState == NO_GRAPH_LOADED)
+        return;
+
+    const QString fileName = QFileDialog::getOpenFileName(
+                this, "Load graph layout", g_memory->rememberedPath,
+                "BandageASM layout (*.layout)");
+    if (fileName.isEmpty())
+        return;
+
+    SavedGraphLayout layout;
+    QString errorMessage;
+    if (!::loadGraphLayout(fileName, *g_assemblyGraph, &layout, &errorMessage))
+    {
+        QMessageBox::warning(this, "Could not load layout", errorMessage);
+        return;
+    }
+
+    g_settings->doubleMode = layout.doubleMode;
+    ui->singleNodesRadioButton->setChecked(!layout.doubleMode);
+    ui->doubleNodesRadioButton->setChecked(layout.doubleMode);
+    resetScene();
+    g_assemblyGraph->applySavedLayout(layout, m_scene);
+    m_scene->setSceneRectangle();
+    zoomToFitScene();
+    selectionChanged();
+    setUiState(GRAPH_DRAWN);
+    g_graphicsView->setFocus();
+    g_memory->rememberedPath = QFileInfo(fileName).absolutePath();
+}
+
 void MainWindow::saveCustomColours()
 {
     if (g_settings->nodeColourScheme != CUSTOM_COLOURS)
@@ -3081,6 +3159,7 @@ void MainWindow::setUiState(UiState uiState)
     updateSaveCustomColoursAction();
     updateSaveNodeLabelsAction();
     updateLoadNodeLabelsAction();
+    updateLayoutActions();
 }
 
 

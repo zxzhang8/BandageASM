@@ -1,7 +1,7 @@
 # <img src="http://rrwick.github.io/Bandage/images/logo.png" alt="Bandage" width="115" height="115" align="middle">BandageASM (fork)
 
 ## Overview
-BandageASM is a GUI for viewing assembly graphs. It draws contigs as nodes with their connections, lets you label/colour/move nodes, and extract sequences directly from the graph. More info and binaries live upstream: https://github.com/rrwick/Bandage and http://rrwick.github.io/Bandage/.
+BandageASM is a fork of original Bandage repo It draws contigs as nodes with their connections, lets you label/colour/move nodes, and extract sequences directly from the graph. More info and binaries live upstream: https://github.com/rrwick/Bandage.
 
 ## Fork additions
 - **GAF path visualisation**: import `.gaf` files, list alignments in their own tab, inspect details, and select the corresponding paths on the drawn graph using the standard graph-selection style. Selecting another path or graph node replaces the previous selection, and **Clear selection** removes it. One GAF tab is kept at a time; loading another valid file asks before replacement and defaults to keeping the current file. Invalid imports leave the current GAF state unchanged.
@@ -13,6 +13,7 @@ BandageASM is a GUI for viewing assembly graphs. It draws contigs as nodes with 
 - **Node context menu**: right-click a node to show its name, open its sequence in a tab, or set it as the Start/End for selected-node path search.
 - **GFA tag node labels**: optional attributes from GFA segment records can be selected from the Node labels controls and displayed on graph nodes.
 - **Selection mode**: a toggle in "Find paths in selection" keeps current selections when clicking empty space, so you can inspect without accidentally clearing nodes/paths.
+- **Layout import/export**: **File → Save layout** stores the complete visible-node set, node polylines, and single/double display mode in a compact BandageASM v2 `.layout` file. **File → Load layout** restores that snapshot after the matching graph is loaded. A SHA-256 fingerprint covering graph topology and sequence content prevents applying a layout to a different graph. Version 1 layout files are intentionally rejected; viewport, colours, labels, and GAF tabs are not included.
 
 ## Finding paths through local tangles
 
@@ -40,30 +41,4 @@ The main application requires the OR-Tools C++ distribution for the CP-SAT path 
 
 ```sh
 qmake Bandage.pro ORTOOLS_ROOT=/path/to/or-tools
-```
-
-### Windows with Qt Creator
-
-The official Windows OR-Tools C++ package is built for Visual Studio 2022. It is not binary-compatible with a Qt MinGW kit. Install the **Qt 6.10.3 MSVC 2022 64-bit** component and the Visual Studio 2022 C++ workload, then:
-
-1. Download and extract the OR-Tools v9.12 Visual Studio 2022 C++ archive to a path without spaces, for example `D:/dev/or-tools`. This project uses the archive's C++20 MSVC interface and its bundled libraries.
-2. Confirm that `D:/dev/or-tools/include/ortools/sat/cp_model.h` and `D:/dev/or-tools/lib/ortools.lib` exist.
-3. In Qt Creator, select the **Desktop Qt 6.10.3 MSVC2022 64bit** kit and a Release build configuration.
-4. Open **Projects → Build → Build Steps → qmake → Details** and add:
-
-   ```text
-   ORTOOLS_ROOT=D:/dev/or-tools
-   ```
-
-5. Delete the old MinGW build directory (or create a new MSVC build directory), run qmake again, and build. If the OR-Tools archive contains runtime DLLs in `bin/`, add that directory to `PATH` or copy the DLLs beside `Bandage.exe`.
-
-## Windows deployment
-Do not distribute only `Bandage.exe`. The MSVC build depends on Qt, the Microsoft C++ runtime, and any DLLs shipped in the OR-Tools `bin/` directory.
-
-After linking a Windows MSVC build, qmake automatically runs `windeployqt` and copies the OR-Tools runtime DLLs beside `Bandage.exe`. If deployment must be repeated manually, use:
-
-```bat
-set ORTOOLS_ROOT=D:\dev\or-tools
-D:\dev\Qt\6.10.3\msvc2022_64\bin\windeployqt.exe --release path\to\release\Bandage.exe
-copy /y "%ORTOOLS_ROOT%\bin\*.dll" path\to\release\
 ```

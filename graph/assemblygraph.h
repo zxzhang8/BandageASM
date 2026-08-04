@@ -34,6 +34,7 @@
 class DeBruijnNode;
 class DeBruijnEdge;
 class MyProgressDialog;
+struct SavedGraphLayout;
 
 class AssemblyGraph : public QObject
 {
@@ -108,6 +109,7 @@ public:
     void buildOgdfGraphFromNodesAndEdges(std::vector<DeBruijnNode *> startingNodes,
                                          int nodeDistance);
     void addGraphicsItemsToScene(MyGraphicsScene * scene);
+    void applySavedLayout(const SavedGraphLayout &layout, MyGraphicsScene *scene);
 
     QStringList splitCsv(QString line, QString sep=",");
     bool loadCSV(QString filename, QStringList * columns, QString * errormsg, bool * coloursLoaded);

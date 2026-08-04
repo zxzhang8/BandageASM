@@ -137,6 +137,7 @@ private:
     void updateSaveCustomColoursAction();
     void updateSaveNodeLabelsAction();
     void updateLoadNodeLabelsAction();
+    void updateLayoutActions();
     friend class BandageTests;
 
 private slots:
@@ -161,6 +162,8 @@ private slots:
     void saveImageEntireScene();
     void saveCustomColours();
     void loadNodeLabels();
+    void loadGraphLayout();
+    void saveGraphLayout();
     void saveNodeLabels();
     void setTextDisplaySettings();
     void fontButtonPressed();

@@ -100,10 +100,10 @@ GraphicsItemNode::GraphicsItemNode(DeBruijnNode * deBruijnNode,
 //This constructor makes a new GraphicsItemNode with a specific collection of
 //line points.
 GraphicsItemNode::GraphicsItemNode(DeBruijnNode * deBruijnNode,
-                                   std::vector<QPointF> linePoints,
+                                   const std::vector<QPointF> &linePoints,
                                    QGraphicsItem * parent) :
     QGraphicsItem(parent), m_deBruijnNode(deBruijnNode),
-    m_hasArrow(g_settings->doubleMode),
+    m_hasArrow(g_settings->doubleMode || g_settings->arrowheadsInSingleMode),
     m_linePoints(linePoints)
 {
     setWidth();

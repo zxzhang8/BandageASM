@@ -2398,11 +2398,13 @@
      <string>File</string>
     </property>
    <addaction name="actionLoad_graph"/>
+   <addaction name="actionLoad_layout"/>
    <addaction name="actionLoad_CSV"/>
    <addaction name="actionLoad_node_labels"/>
    <addaction name="separator"/>
    <addaction name="actionSave_custom_colours"/>
    <addaction name="actionSave_node_labels"/>
+   <addaction name="actionSave_layout"/>
    <addaction name="actionSave_image_current_view"/>
    <addaction name="actionSave_image_entire_scene"/>
    <addaction name="separator"/>
@@ -2521,6 +2523,22 @@
    <property name="text">
     <string>Save image (current view)</string>
    </property>
+  </action>
+  <action name="actionLoad_layout">
+   <property name="enabled"><bool>false</bool></property>
+   <property name="icon">
+    <iconset resource="../images/images.qrc">
+     <normaloff>:/icons/load-256.png</normaloff>:/icons/load-256.png</iconset>
+   </property>
+   <property name="text"><string>Load layout...</string></property>
+  </action>
+  <action name="actionSave_layout">
+   <property name="enabled"><bool>false</bool></property>
+   <property name="icon">
+    <iconset resource="../images/images.qrc">
+     <normaloff>:/icons/save-256.png</normaloff>:/icons/save-256.png</iconset>
+   </property>
+   <property name="text"><string>Save layout...</string></property>
   </action>
   <action name="actionSave_custom_colours">
    <property name="icon">
