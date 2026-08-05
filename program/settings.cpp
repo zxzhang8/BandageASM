@@ -76,6 +76,10 @@ Settings::Settings()
     nodeAttributeHeaders.clear();
     nodeAttributeColumns.clear();
     displayBlastHits = false;
+    displayBedInterval = true;
+    displayBedThick = true;
+    displayBedBlocks = true;
+    displayBedText = false;
     labelFont = QFont();
     textOutline = false;
     antialiasing = true;

@@ -81,6 +81,9 @@ private:
     SelectedNodesPathsWidget * m_selectedNodesPathsWidget;
     CpSatAdvancedConfigWidget * m_cpSatAdvancedConfigWidget;
     TanglePathParameters m_cpSatParameters;
+    QString m_bedFileName;
+    int m_bedValidCount;
+    int m_bedSkippedCount;
     bool m_alreadyShown;
 
     enum GafReplacementMode {CONFIRM_GAF_REPLACEMENT, FORCE_GAF_REPLACEMENT};
@@ -138,6 +141,7 @@ private:
     void updateSaveNodeLabelsAction();
     void updateLoadNodeLabelsAction();
     void updateLayoutActions();
+    void updateBedControls();
     friend class BandageTests;
 
 private slots:
@@ -197,6 +201,9 @@ private slots:
     void startingNodesExactMatchChanged();
     void openPathSpecifyDialog();
     void openGafPathsDialog();
+    void loadBedAnnotations();
+    void clearBedAnnotations();
+    void bedDisplaySettingsChanged();
     void clearGafHighlighting();
     void focusOnGafSelection();
     void focusOnSelectedNodesPaths();

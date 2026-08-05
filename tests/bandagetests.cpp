@@ -25,9 +25,12 @@
 #include <QFile>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QImage>
+#include <QPainter>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTableWidget>
@@ -49,6 +52,7 @@
 #include "../command_line/commoncommandlinefunctions.h"
 #include "../program/gafparser.h"
 #include "../program/graphlayoutio.h"
+#include "../program/bedannotations.h"
 #include "../program/tanglepathsearch.h"
 #include "../ui/gafpathsdialog.h"
 #include "../ui/mainwindow.h"
@@ -2354,6 +2358,118 @@ void BandageTests::graphLayoutImportExport()
     window.setUiState(GRAPH_DRAWN);
     QVERIFY(loadLayoutAction->isEnabled());
     QVERIFY(saveLayoutAction->isEnabled());
+}
+
+
+void BandageTests::bedAnnotations()
+{
+    createGlobals();
+
+    QTemporaryFile graphFile(QDir::tempPath() + "/bandage-bed-graph-XXXXXX.gfa");
+    QVERIFY(graphFile.open());
+    QTextStream graphOut(&graphFile);
+    graphOut << "H\tVN:Z:1.0\n";
+    graphOut << "S\tA\t" << QString(100, 'A') << "\n";
+    graphOut << "S\tB\t" << QString(80, 'C') << "\n";
+    graphOut.flush();
+    graphFile.close();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(graphFile.fileName()));
+
+    QTemporaryFile bedFile(QDir::tempPath() + "/bandage-bed-annotations-XXXXXX.bed");
+    QVERIFY(bedFile.open());
+    QTextStream bedOut(&bedFile);
+    bedOut << "# BED3-BED12 parser coverage\n";
+    bedOut << "A\t10\t50\tfeature\t900\t+\t15\t40\t1,2,3\t2\t10,5,\t0,30,\n";
+    bedOut << "A\t20\t30\treverse\t0\t-\n";
+    bedOut << "A\t95\t110\tout-of-range\n";
+    bedOut << "missing\t0\t10\tunmatched\n";
+    bedOut << "A\tbad\t20\tmalformed\n";
+    bedOut.flush();
+    bedFile.close();
+
+    const BedLoadResult result = parseBedAnnotationsFile(bedFile.fileName(), *g_assemblyGraph);
+    QVERIFY(result.hasValidAnnotations());
+    QCOMPARE(result.validCount, 2);
+    QCOMPARE(result.malformedCount, 1);
+    QCOMPARE(result.unmatchedCount, 1);
+    QCOMPARE(result.outOfRangeCount, 1);
+    QCOMPARE(result.skippedCount(), 3);
+    QVERIFY(result.warningSummary().contains("line"));
+
+    DeBruijnNode *positive = g_assemblyGraph->m_deBruijnGraphNodes.value("A+");
+    DeBruijnNode *negative = g_assemblyGraph->m_deBruijnGraphNodes.value("A-");
+    QVERIFY(positive != nullptr);
+    QVERIFY(negative != nullptr);
+    QCOMPARE(result.annotations.value(positive).size(), 1);
+    QCOMPARE(result.annotations.value(negative).size(), 1);
+    const BedAnnotation feature = result.annotations.value(positive).first();
+    QCOMPARE(feature.start, qint64(10));
+    QCOMPARE(feature.end, qint64(50));
+    QCOMPARE(feature.thickStart, qint64(15));
+    QCOMPARE(feature.thickEnd, qint64(40));
+    QCOMPARE(feature.colour, QColor(1, 2, 3));
+    QCOMPARE(feature.blocks.size(), 2);
+    QCOMPARE(feature.blocks[1].start, qint64(40));
+    QCOMPARE(feature.blocks[1].end, qint64(45));
+
+    replaceBedAnnotations(*g_assemblyGraph, result);
+    QCOMPARE(positive->getBedAnnotations().size(), 1);
+    QCOMPARE(negative->getBedAnnotations().size(), 1);
+
+    QTemporaryFile invalidFile(QDir::tempPath() + "/bandage-bed-invalid-XXXXXX.bed");
+    QVERIFY(invalidFile.open());
+    QTextStream invalidOut(&invalidFile);
+    invalidOut << "missing\t0\t10\n";
+    invalidOut.flush();
+    invalidFile.close();
+    const BedLoadResult invalidResult = parseBedAnnotationsFile(invalidFile.fileName(), *g_assemblyGraph);
+    QVERIFY(!invalidResult.hasValidAnnotations());
+    QVERIFY(!invalidResult.fatalError.isEmpty());
+    QCOMPARE(positive->getBedAnnotations().size(), 1); // A failed load is transactional.
+
+    {
+        std::vector<QPointF> points{QPointF(0.0, 0.0), QPointF(100.0, 0.0)};
+        GraphicsItemNode item(positive, points);
+        QVERIFY(!item.makePartialPath(0.1, 0.5).isEmpty());
+        item.setNodeColour();
+        QImage rendered(120, 40, QImage::Format_ARGB32_Premultiplied);
+        rendered.fill(Qt::transparent);
+        QPainter painter(&rendered);
+        painter.translate(10.0, 20.0);
+        item.paint(&painter, nullptr, nullptr);
+        painter.end();
+        QCOMPARE(rendered.pixelColor(30, 20), QColor(1, 2, 3));
+        QCOMPARE(rendered.pixelColor(85, 20), QColor(63, 160, 230));
+
+        MainWindow window;
+        window.setUiState(GRAPH_LOADED);
+        QPushButton *loadButton = window.findChild<QPushButton *>("bedLoadButton");
+        QPushButton *clearButton = window.findChild<QPushButton *>("bedClearButton");
+        QCheckBox *intervalCheckBox = window.findChild<QCheckBox *>("bedIntervalCheckBox");
+        QVERIFY(loadButton != nullptr);
+        QVERIFY(clearButton != nullptr);
+        QVERIFY(intervalCheckBox != nullptr);
+        QVERIFY(loadButton->isEnabled());
+        QVERIFY(!clearButton->isEnabled());
+        window.m_bedFileName = "test.bed";
+        window.m_bedValidCount = 2;
+        window.m_bedSkippedCount = 3;
+        window.updateBedControls();
+        QVERIFY(clearButton->isEnabled());
+        QVERIFY(intervalCheckBox->isEnabled());
+
+        ::clearBedAnnotations(*g_assemblyGraph);
+        QVERIFY(!positive->hasBedAnnotations());
+        QVERIFY(!negative->hasBedAnnotations());
+    }
+
+    createGlobals();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+    const BedLoadResult example = parseBedAnnotationsFile(
+        getTestDirectory() + "bed_annotations_example.bed", *g_assemblyGraph);
+    QVERIFY2(example.hasValidAnnotations(), qPrintable(example.fatalError));
+    QCOMPARE(example.validCount, 4);
+    QCOMPARE(example.skippedCount(), 0);
 }
 
 

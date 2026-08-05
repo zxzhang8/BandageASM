@@ -75,6 +75,7 @@
 #include "selectednodespathswidget.h"
 #include "cpsatadvancedconfigwidget.h"
 #include "../program/graphlayoutio.h"
+#include "../program/bedannotations.h"
 #include <QHash>
 #include <QQueue>
 #include <QSet>
@@ -87,7 +88,8 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     m_fileToLoadOnStartup(fileToLoadOnStartup), m_drawGraphAfterLoad(drawGraphAfterLoad),
     m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafPathsWidget(0),
     m_selectedEdgePathWidget(0), m_nodeSequenceWidget(0), m_selectedNodesPathsWidget(0),
-    m_cpSatAdvancedConfigWidget(0), m_alreadyShown(false)
+    m_cpSatAdvancedConfigWidget(0), m_bedValidCount(0), m_bedSkippedCount(0),
+    m_alreadyShown(false)
 {
     ui->setupUi(this);
     ui->gridLayout_selectedNodesPaths->setColumnStretch(1, 1);
@@ -196,6 +198,12 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->blastSearchButton, SIGNAL(clicked()), this, SLOT(openBlastSearchDialog()));
     connect(ui->blastQueryComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(blastQueryChanged()));
     connect(ui->gafLoadButton, SIGNAL(clicked()), this, SLOT(openGafPathsDialog()));
+    connect(ui->bedLoadButton, SIGNAL(clicked()), this, SLOT(loadBedAnnotations()));
+    connect(ui->bedClearButton, SIGNAL(clicked()), this, SLOT(clearBedAnnotations()));
+    connect(ui->bedIntervalCheckBox, SIGNAL(toggled(bool)), this, SLOT(bedDisplaySettingsChanged()));
+    connect(ui->bedThickCheckBox, SIGNAL(toggled(bool)), this, SLOT(bedDisplaySettingsChanged()));
+    connect(ui->bedBlocksCheckBox, SIGNAL(toggled(bool)), this, SLOT(bedDisplaySettingsChanged()));
+    connect(ui->bedTextCheckBox, SIGNAL(toggled(bool)), this, SLOT(bedDisplaySettingsChanged()));
     connect(ui->nodeAttributesLoadButton, SIGNAL(clicked()), this, SLOT(loadCSV()));
     connect(ui->nodeAttributesClearButton, SIGNAL(clicked()), this, SLOT(clearNodeAttributes()));
     connect(ui->nodeAttributesListWidget, SIGNAL(itemChanged(QListWidgetItem*)), this, SLOT(nodeAttributesItemChanged(QListWidgetItem*)));
@@ -294,6 +302,11 @@ MainWindow::~MainWindow()
 
 void MainWindow::cleanUp()
 {
+    ::clearBedAnnotations(*g_assemblyGraph);
+    m_bedFileName.clear();
+    m_bedValidCount = 0;
+    m_bedSkippedCount = 0;
+    updateBedControls();
     ui->blastQueryComboBox->clear();
     ui->blastQueryComboBox->addItem("none");
     ui->gafFileLabel->setText("Not loaded");
@@ -586,6 +599,95 @@ MainWindow::GafLoadResult MainWindow::loadGafPathsFile(const QString &fileName,
     updateSelectedNodesPathControls(m_scene->getSelectedNodes());
     m_tabWidget->setCurrentWidget(m_gafPathsWidget);
     return GAF_LOADED;
+}
+
+
+void MainWindow::loadBedAnnotations()
+{
+    if (g_assemblyGraph->m_deBruijnGraphNodes.isEmpty())
+    {
+        QMessageBox::information(this, "No graph loaded",
+                                 "Load a graph before importing BED annotations.");
+        return;
+    }
+
+    QString selectedFilter = "BED (*.bed);;All files (*)";
+    const QString fileName = QFileDialog::getOpenFileName(this, "Load BED annotations",
+                                                          g_memory->rememberedPath,
+                                                          "BED (*.bed);;All files (*)",
+                                                          &selectedFilter);
+    if (fileName.isEmpty())
+        return;
+
+    const BedLoadResult result = parseBedAnnotationsFile(fileName, *g_assemblyGraph);
+    if (!result.hasValidAnnotations())
+    {
+        QMessageBox::warning(this, "BED annotations not loaded", result.fatalError);
+        return;
+    }
+
+    replaceBedAnnotations(*g_assemblyGraph, result);
+    m_bedFileName = QFileInfo(fileName).fileName();
+    m_bedValidCount = result.validCount;
+    m_bedSkippedCount = result.skippedCount();
+    g_memory->rememberedPath = QFileInfo(fileName).absolutePath();
+    updateBedControls();
+    g_graphicsView->viewport()->update();
+
+    if (result.skippedCount() > 0)
+    {
+        QMessageBox::warning(this, "BED annotations loaded with warnings",
+                             QString("Loaded %1 annotation%2.\n\n%3")
+                                 .arg(result.validCount)
+                                 .arg(result.validCount == 1 ? "" : "s")
+                                 .arg(result.warningSummary()));
+    }
+}
+
+
+void MainWindow::clearBedAnnotations()
+{
+    ::clearBedAnnotations(*g_assemblyGraph);
+    m_bedFileName.clear();
+    m_bedValidCount = 0;
+    m_bedSkippedCount = 0;
+    updateBedControls();
+    g_graphicsView->viewport()->update();
+}
+
+
+void MainWindow::bedDisplaySettingsChanged()
+{
+    g_settings->displayBedInterval = ui->bedIntervalCheckBox->isChecked();
+    g_settings->displayBedThick = ui->bedThickCheckBox->isChecked();
+    g_settings->displayBedBlocks = ui->bedBlocksCheckBox->isChecked();
+    g_settings->displayBedText = ui->bedTextCheckBox->isChecked();
+    g_graphicsView->viewport()->update();
+}
+
+
+void MainWindow::updateBedControls()
+{
+    const bool loaded = m_bedValidCount > 0;
+    ui->bedClearButton->setEnabled(loaded);
+    ui->bedIntervalCheckBox->setEnabled(loaded);
+    ui->bedThickCheckBox->setEnabled(loaded);
+    ui->bedBlocksCheckBox->setEnabled(loaded);
+    ui->bedTextCheckBox->setEnabled(loaded);
+
+    if (!loaded)
+    {
+        ui->bedFileLabel->setText("Not loaded");
+        return;
+    }
+
+    QString text = QString("%1 (%2 annotation%3")
+                       .arg(m_bedFileName)
+                       .arg(m_bedValidCount)
+                       .arg(m_bedValidCount == 1 ? "" : "s");
+    if (m_bedSkippedCount > 0)
+        text += QString(", %1 skipped").arg(m_bedSkippedCount);
+    ui->bedFileLabel->setText(text + ")");
 }
 
 
@@ -3100,6 +3202,11 @@ void MainWindow::setInfoTexts()
                                         "hits' colour modes.");
     ui->gafInfoText->setInfoText("Import a GAF file (graph alignments) to list all paths. "
                                  "Select path(s) and click 'Highlight selected paths' to select and display the path on the graph.");
+    ui->bedInfoText->setInfoText("Import BED3-BED12 annotations whose first column is a graph node name. "
+                                 "Coordinates are zero-based, half-open positions local to that node. "
+                                 "The strand column controls which node orientation receives the annotation.<br><br>"
+                                 "Interval shows the full feature, Thick shows thickStart/thickEnd, Blocks shows "
+                                 "BED12 blocks, and Text shows the BED feature name.");
     ui->selectionSearchInfoText->setInfoText("Type a comma-delimited list of one or mode node numbers and then click "
                                              "the 'Find node(s)' button to search for nodes in the graph. "
                                              "If the search is successful, the view will zoom to the found nodes "
@@ -3130,6 +3237,7 @@ void MainWindow::setUiState(UiState uiState)
         ui->nodeLabelsWidget->setEnabled(false);
         ui->blastSearchWidget->setEnabled(false);
         ui->gafWidget->setEnabled(false);
+        ui->bedWidget->setEnabled(false);
         ui->selectionScrollAreaWidgetContents->setEnabled(false);
         ui->actionLoad_CSV->setEnabled(false);
         break;
@@ -3140,6 +3248,7 @@ void MainWindow::setUiState(UiState uiState)
         ui->nodeLabelsWidget->setEnabled(false);
         ui->blastSearchWidget->setEnabled(true);
         ui->gafWidget->setEnabled(true);
+        ui->bedWidget->setEnabled(true);
         ui->selectionScrollAreaWidgetContents->setEnabled(false);
         ui->actionLoad_CSV->setEnabled(true);
         break;
@@ -3150,6 +3259,7 @@ void MainWindow::setUiState(UiState uiState)
         ui->nodeLabelsWidget->setEnabled(true);
         ui->blastSearchWidget->setEnabled(true);
         ui->gafWidget->setEnabled(true);
+        ui->bedWidget->setEnabled(true);
         ui->selectionScrollAreaWidgetContents->setEnabled(true);
         ui->actionZoom_to_selection->setEnabled(true);
         ui->actionLoad_CSV->setEnabled(true);
@@ -3160,6 +3270,7 @@ void MainWindow::setUiState(UiState uiState)
     updateSaveNodeLabelsAction();
     updateLoadNodeLabelsAction();
     updateLayoutActions();
+    updateBedControls();
 }
 
 
@@ -3473,6 +3584,10 @@ void MainWindow::setWidgetsFromSettings()
     ui->nodeDepthCheckBox->setChecked(g_settings->displayNodeDepth);
     ui->gfaTagCheckBox->setChecked(g_settings->displayNodeGfaTag);
     ui->blastHitsCheckBox->setChecked(g_settings->displayBlastHits);
+    ui->bedIntervalCheckBox->setChecked(g_settings->displayBedInterval);
+    ui->bedThickCheckBox->setChecked(g_settings->displayBedThick);
+    ui->bedBlocksCheckBox->setChecked(g_settings->displayBedBlocks);
+    ui->bedTextCheckBox->setChecked(g_settings->displayBedText);
     ui->textOutlineCheckBox->setChecked(g_settings->textOutline);
 
     ui->startingNodesExactMatchRadioButton->setChecked(g_settings->startingNodesExactMatch);

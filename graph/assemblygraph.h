@@ -177,6 +177,7 @@ public:
     long long getTotalLengthOrphanedNodes() const;
     bool useLinearLayout() const;
     void clearAllCsvData();
+    QString getNodeNameFromString(QString string);
 
 
 private:
@@ -195,7 +196,6 @@ private:
     int getLengthFromCigar(QString cigar);
     int getCigarCount(QString cigarCode, QString cigar);
     QString getOppositeNodeName(QString nodeName);
-    QString getNodeNameFromString(QString string);
     QString getNewNodeName(QString oldNodeName);
     void duplicateGraphicsNode(DeBruijnNode * originalNode, DeBruijnNode * newNode, MyGraphicsScene * scene);
     bool canAddNodeToStartOfMergeList(QList<DeBruijnNode *> * mergeList,

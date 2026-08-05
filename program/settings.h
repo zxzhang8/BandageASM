@@ -129,6 +129,10 @@ public:
     QStringList nodeAttributeHeaders;
     QList<int> nodeAttributeColumns;
     bool displayBlastHits;
+    bool displayBedInterval;
+    bool displayBedThick;
+    bool displayBedBlocks;
+    bool displayBedText;
     QFont labelFont;
     bool textOutline;
     bool antialiasing;

@@ -14,6 +14,15 @@ BandageASM is a fork of original Bandage repo It draws contigs as nodes with the
 - **GFA tag node labels**: optional attributes from GFA segment records can be selected from the Node labels controls and displayed on graph nodes.
 - **Selection mode**: a toggle in "Find paths in selection" keeps current selections when clicking empty space, so you can inspect without accidentally clearing nodes/paths.
 - **Layout import/export**: **File → Save layout** stores the complete visible-node set, node polylines, and single/double display mode in a compact BandageASM v2 `.layout` file. **File → Load layout** restores that snapshot after the matching graph is loaded. A SHA-256 fingerprint covering graph topology and sequence content prevents applying a layout to a different graph. Version 1 layout files are intentionally rejected; viewport, colours, labels, and GAF tabs are not included.
+- **BED annotations**: load BED3-BED12 records from **Graph controls → BED annotations** and draw node-local feature intervals, thick regions, BED12 blocks, and optional names directly on graph nodes. The BED chromosome field is matched to a graph node name, coordinates are zero-based and half-open within that node, and the strand field selects the node orientation. A successful load replaces the previous BED file; malformed, unmatched, and out-of-range records are skipped and summarized, while a failed load preserves the current annotations. This feature was designed with explicit reference to the BED annotation implementation in **BandageNG**, then implemented independently in BandageASM with stricter validation, transactional replacement, separate display controls, and diagnostic summaries.
+
+## BED annotations
+
+Load a graph, optionally draw it, then click **Load BED** under **BED annotations**. Use the **Interval**, **Thick**, **Blocks**, and **Text** checkboxes to independently control the displayed layers. BED item RGB colours are used when present; otherwise a blue default is used. **Clear** removes the loaded annotations without changing the graph.
+
+The node-local BED interpretation and the three graphical layers—whole interval, thick region, and BED12 blocks—are based on the corresponding feature in **BandageNG**. BandageASM does not depend on BandageNG at build time or runtime: its parser, storage, controls, rendering integration, validation, and error handling are implemented in the main BandageASM source tree. Unlike the referenced BandageNG loader, the BandageASM loader also accepts comment lines beginning with `#` and UCSC-style `track` and `browser` lines.
+
+An example for `tests/test_plasmids.gfa` is provided at [`tests/bed_annotations_example.bed`](tests/bed_annotations_example.bed). Load the GFA first, draw it, and then load the BED file.
 
 ## Finding paths through local tangles
 
@@ -42,3 +51,7 @@ The main application requires the OR-Tools C++ distribution for the CP-SAT path 
 ```sh
 qmake Bandage.pro ORTOOLS_ROOT=/path/to/or-tools
 ```
+
+# Contact
+
+If you have any questions or wish to add new features, feel free to contact: zexinzhang@stu.xjtu.edu.cn .

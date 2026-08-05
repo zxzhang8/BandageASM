@@ -32,6 +32,7 @@
 
 class DeBruijnNode;
 class Path;
+struct BedAnnotation;
 
 class GraphicsItemNode : public QGraphicsItem
 {
@@ -93,6 +94,11 @@ public:
     void fixEdgePaths(std::vector<GraphicsItemNode *> * nodes = 0);
 
 private:
+    void drawBedAnnotations(QPainter *painter, const QPainterPath &outlinePath);
+    void drawBedAnnotation(QPainter *painter, const BedAnnotation &annotation,
+                           bool reverse, const QPainterPath &outlinePath);
+    void drawBedAnnotationText(QPainter *painter, const BedAnnotation &annotation,
+                               bool reverse);
     void exactPathHighlightNode(QPainter * painter);
     void queryPathHighlightNode(QPainter * painter);
     void pathHighlightNode2(QPainter * painter, DeBruijnNode * node, bool reverse, Path * path);

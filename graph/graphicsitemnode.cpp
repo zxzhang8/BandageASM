@@ -177,6 +177,8 @@ void GraphicsItemNode::paint(QPainter * painter, const QStyleOptionGraphicsItem 
         painter->setClipping(false);
     }
 
+    drawBedAnnotations(painter, outlinePath);
+
 
     //Draw the node outline
     QColor outlineColour = g_settings->outlineColour;
@@ -233,6 +235,17 @@ void GraphicsItemNode::paint(QPainter * painter, const QStyleOptionGraphicsItem 
             drawTextPathAtLocation(painter, textPath, centres[i]);
     }
 
+    if (g_settings->displayBedText)
+    {
+        for (const BedAnnotation &annotation : m_deBruijnNode->getBedAnnotations())
+            drawBedAnnotationText(painter, annotation, false);
+        if (!g_settings->doubleMode)
+        {
+            for (const BedAnnotation &annotation : m_deBruijnNode->getReverseComplement()->getBedAnnotations())
+                drawBedAnnotationText(painter, annotation, true);
+        }
+    }
+
     //Draw BLAST hit labels, if appropriate.
     if (g_settings->displayBlastHits && nodeHasBlastHits)
     {
@@ -257,6 +270,92 @@ void GraphicsItemNode::paint(QPainter * painter, const QStyleOptionGraphicsItem 
             drawTextPathAtLocation(painter, textPath, centre);
         }
     }
+}
+
+
+void GraphicsItemNode::drawBedAnnotations(QPainter *painter, const QPainterPath &outlinePath)
+{
+    if (!g_settings->displayBedInterval && !g_settings->displayBedThick &&
+            !g_settings->displayBedBlocks)
+        return;
+
+    for (const BedAnnotation &annotation : m_deBruijnNode->getBedAnnotations())
+        drawBedAnnotation(painter, annotation, false, outlinePath);
+
+    if (!g_settings->doubleMode)
+    {
+        for (const BedAnnotation &annotation : m_deBruijnNode->getReverseComplement()->getBedAnnotations())
+            drawBedAnnotation(painter, annotation, true, outlinePath);
+    }
+}
+
+
+void GraphicsItemNode::drawBedAnnotation(QPainter *painter, const BedAnnotation &annotation,
+                                         bool reverse, const QPainterPath &outlinePath)
+{
+    const double nodeLength = m_deBruijnNode->getLength();
+    if (nodeLength <= 0.0)
+        return;
+
+    auto fractions = [nodeLength, reverse](qint64 start, qint64 end) {
+        double startFraction = static_cast<double>(start) / nodeLength;
+        double endFraction = static_cast<double>(end) / nodeLength;
+        if (reverse)
+        {
+            const double oldStart = startFraction;
+            startFraction = 1.0 - endFraction;
+            endFraction = 1.0 - oldStart;
+        }
+        return qMakePair(startFraction, endFraction);
+    };
+
+    painter->save();
+    if (m_hasArrow)
+        painter->setClipPath(outlinePath);
+
+    QPen pen(annotation.colour);
+    pen.setCapStyle(Qt::FlatCap);
+    pen.setJoinStyle(Qt::BevelJoin);
+
+    auto drawLayer = [&](qint64 start, qint64 end, double widthFactor) {
+        if (end <= start)
+            return;
+        const QPair<double, double> range = fractions(start, end);
+        pen.setWidthF(m_width * widthFactor);
+        painter->setPen(pen);
+        painter->drawPath(makePartialPath(range.first, range.second));
+    };
+
+    if (g_settings->displayBedInterval)
+        drawLayer(annotation.start, annotation.end, 1.0);
+    if (g_settings->displayBedThick && annotation.hasThick)
+        drawLayer(annotation.thickStart, annotation.thickEnd, 1.3);
+    if (g_settings->displayBedBlocks)
+    {
+        for (const BedBlock &block : annotation.blocks)
+            drawLayer(block.start, block.end, 1.6);
+    }
+    painter->restore();
+}
+
+
+void GraphicsItemNode::drawBedAnnotationText(QPainter *painter,
+                                             const BedAnnotation &annotation,
+                                             bool reverse)
+{
+    if (annotation.name.isEmpty() || m_deBruijnNode->getLength() <= 0)
+        return;
+
+    double centreFraction = static_cast<double>(annotation.start + annotation.end) /
+                            (2.0 * m_deBruijnNode->getLength());
+    if (reverse)
+        centreFraction = 1.0 - centreFraction;
+
+    QPainterPath textPath;
+    const QFontMetrics metrics(g_settings->labelFont);
+    const double shiftLeft = -metrics.boundingRect(annotation.name).width() / 2.0;
+    textPath.addText(shiftLeft, 0.0, g_settings->labelFont, annotation.name);
+    drawTextPathAtLocation(painter, textPath, findLocationOnPath(centreFraction));
 }
 
 

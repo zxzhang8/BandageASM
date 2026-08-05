@@ -74,6 +74,7 @@ SOURCES += \
     program/cpsattanglepathfinder.cpp \
     program/tanglepathworker.cpp \
     program/graphlayoutio.cpp \
+    program/bedannotations.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
     graph/debruijnnode.cpp \
@@ -168,6 +169,7 @@ SOURCES += \
     ui/cpsatadvancedconfigwidget.cpp
 
 HEADERS  += \
+    program/bedannotations.h \
     program/settings.h \
     program/pathsearch.h \
     program/tanglepathsearch.h \

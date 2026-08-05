@@ -27,6 +27,7 @@
 #include <QColor>
 #include "../blast/blasthitpart.h"
 #include "../program/settings.h"
+#include "../program/bedannotations.h"
 
 class OgdfNode;
 class DeBruijnEdge;
@@ -97,6 +98,8 @@ public:
     QStringList getGfaExtraSegmentTags() const {return m_gfaExtraSegmentTags;}
     QStringList getGfaTagNames() const;
     QString getGfaTagValue(const QString &tagName) const;
+    const QList<BedAnnotation> &getBedAnnotations() const {return m_bedAnnotations;}
+    bool hasBedAnnotations() const {return !m_bedAnnotations.isEmpty();}
     bool isInDepthRange(double min, double max) const;
     bool sequenceIsMissing() const;
     DeBruijnEdge *getSelfLoopingEdge() const;
@@ -130,6 +133,9 @@ public:
     void setCsvData(QStringList csvData) {m_csvData = csvData;}
     void clearCsvData() {m_csvData.clear();}
     void setGfaExtraSegmentTags(QStringList tags) {m_gfaExtraSegmentTags = tags;}
+    void setBedAnnotations(const QList<BedAnnotation> &annotations) {m_bedAnnotations = annotations;}
+    void addBedAnnotation(const BedAnnotation &annotation) {m_bedAnnotations.append(annotation);}
+    void clearBedAnnotations() {m_bedAnnotations.clear();}
     void setDepth(double newDepth) {m_depth = newDepth;}
     void setReadSupportCount(long long newCount) {m_readSupportCount = newCount;}
     void setName(QString newName) {m_name = newName;}
@@ -154,6 +160,7 @@ private:
     std::vector<BlastHit *> m_blastHits;
     QStringList m_csvData;
     QStringList m_gfaExtraSegmentTags;
+    QList<BedAnnotation> m_bedAnnotations;
     QString getNodeNameForFasta(bool sign) const;
     QByteArray getUpstreamSequence(int upstreamSequenceLength) const;
 

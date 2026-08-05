@@ -64,6 +64,7 @@ SOURCES += \
     program/cpsattanglepathfinder.cpp \
     program/tanglepathworker.cpp \
     program/graphlayoutio.cpp \
+    program/bedannotations.cpp \
     program/gafparser.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
@@ -159,6 +160,7 @@ SOURCES += \
     ui/cpsatadvancedconfigwidget.cpp
 
 HEADERS  += \
+    program/bedannotations.h \
     tests/bandagetests.h \
     program/settings.h \
     program/pathsearch.h \
