@@ -1176,6 +1176,14 @@ void BandageTests::gfaTagNodeLabels()
 
 void BandageTests::tangleBeamSearchAndGafClipping()
 {
+    const TanglePathParameters cpDefaults;
+    QCOMPARE(cpDefaults.cpTauMin, 0.9);
+    QCOMPARE(cpDefaults.fullThreadFraction, 0.4);
+    QCOMPARE(cpDefaults.contextFraction, 0.6);
+    QCOMPARE(cpDefaults.asFraction, 0.999);
+    QCOMPARE(cpDefaults.coverageWeight, 0.75);
+    QCOMPARE(cpDefaults.readWeight, 1.25);
+
     createGlobals();
 
     QTemporaryFile gfaFile(QDir::tempPath() + "/bandage-tangle-XXXXXX.gfa");

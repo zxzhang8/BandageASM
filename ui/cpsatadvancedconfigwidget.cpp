@@ -29,6 +29,7 @@ CpSatAdvancedConfigWidget::CpSatAdvancedConfigWidget(
     QWidget(parent),
     m_coverageDispersion(makeDoubleSpinBox(0.0, 10.0, 4, 0.05, this)),
     m_huberDelta(makeDoubleSpinBox(0.0, 1000.0, 4, 0.25, this)),
+    m_tauMin(makeDoubleSpinBox(0.0001, 1.0, 4, 0.05, this)),
     m_fullThreadFraction(makeDoubleSpinBox(0.0, 1.0, 4, 0.05, this)),
     m_contextFraction(makeDoubleSpinBox(0.0, 1.0, 4, 0.05, this)),
     m_contextMin(new QSpinBox(this)),
@@ -65,8 +66,9 @@ CpSatAdvancedConfigWidget::CpSatAdvancedConfigWidget(
                 "<small>&rho; = coverage dispersion, &delta; = coverage Huber delta, "
                 "&alpha; = full-thread fraction, &beta; = context fraction, "
                 "w<sub>cov</sub> = coverage weight, and w<sub>read</sub> = read evidence weight. "
-                "Contexts use lengths [context min, context max]; alignments are retained at "
-                "score &ge; f<sub>AS</sub> &times; best score.</small>");
+                "Contexts use lengths [context min, context max]; evidence is weighted by "
+                "AS, identity, and mapping ambiguity; matching rewards are capped by expected "
+                "pattern counts.</small>");
     formula->setStyleSheet("QLabel { background: palette(alternate-base); border: 1px solid "
                            "palette(mid); padding: 8px; }");
     outerLayout->addWidget(formula);
@@ -91,6 +93,10 @@ CpSatAdvancedConfigWidget::CpSatAdvancedConfigWidget(
                  "Sets the transition point &delta; of the Huber loss H<sub>&delta;</sub> used "
                  "for coverage residuals. Residuals below this point are quadratic; larger "
                  "residuals are penalized linearly.");
+    addParameter("CP-SAT minimum coverage ratio (τ):", m_tauMin,
+                 "Sets the minimum expected fraction of single-copy coverage used to derive "
+                 "CP-SAT node visit bounds. This parameter is specific to CP-SAT and does "
+                 "not change Beam search.");
     addParameter("Full-thread fraction (α):", m_fullThreadFraction,
                  "Sets &alpha;, the reward assigned when the candidate path contains a retained "
                  "read's complete graph thread (in either orientation).");
@@ -146,6 +152,7 @@ void CpSatAdvancedConfigWidget::setValues(const TanglePathParameters &parameters
 {
     m_coverageDispersion->setValue(parameters.coverageDispersion);
     m_huberDelta->setValue(parameters.cpHuberDelta);
+    m_tauMin->setValue(parameters.cpTauMin);
     m_fullThreadFraction->setValue(parameters.fullThreadFraction);
     m_contextFraction->setValue(parameters.contextFraction);
     m_contextMin->setValue(parameters.contextMin);
@@ -161,6 +168,7 @@ TanglePathParameters CpSatAdvancedConfigWidget::values() const
     TanglePathParameters parameters;
     parameters.coverageDispersion = m_coverageDispersion->value();
     parameters.cpHuberDelta = m_huberDelta->value();
+    parameters.cpTauMin = m_tauMin->value();
     parameters.fullThreadFraction = m_fullThreadFraction->value();
     parameters.contextFraction = m_contextFraction->value();
     parameters.contextMin = m_contextMin->value();

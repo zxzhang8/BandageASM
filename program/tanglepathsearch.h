@@ -87,6 +87,7 @@ struct TanglePathParameters
 
     double coverageDispersion;
     double cpHuberDelta;
+    double cpTauMin;
     double fullThreadFraction;
     double contextFraction;
     int contextMin;

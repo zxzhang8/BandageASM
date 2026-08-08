@@ -1494,6 +1494,7 @@ bool MainWindow::cpSatAdvancedConfigIsDefault() const
     const TanglePathParameters defaults;
     return m_cpSatParameters.coverageDispersion == defaults.coverageDispersion &&
             m_cpSatParameters.cpHuberDelta == defaults.cpHuberDelta &&
+            m_cpSatParameters.cpTauMin == defaults.cpTauMin &&
             m_cpSatParameters.fullThreadFraction == defaults.fullThreadFraction &&
             m_cpSatParameters.contextFraction == defaults.contextFraction &&
             m_cpSatParameters.contextMin == defaults.contextMin &&

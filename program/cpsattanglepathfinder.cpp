@@ -46,6 +46,7 @@ struct ContextEvidence
 {
     IntPath pattern;
     double fraction;
+    int expectedCount;
 };
 
 struct ReadEvidence
@@ -53,7 +54,7 @@ struct ReadEvidence
     QString readId;
     int selectedAlignments;
     double confidence;
-    std::vector<IntPath> fullThreads;
+    std::vector<ContextEvidence> fullThreads;
     std::vector<ContextEvidence> contexts;
 };
 
@@ -125,6 +126,34 @@ double alignedFraction(const TangleReadAlignment &alignment)
             double(alignment.queryEnd - alignment.queryStart) / alignment.queryLength));
 }
 
+std::vector<double> alignmentWeights(
+        const std::vector<const TangleReadAlignment *> &retained,
+        double asFraction)
+{
+    if (retained.empty())
+        return std::vector<double>();
+    double bestScore = -std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < retained.size(); ++i)
+        bestScore = std::max(bestScore, selectionScore(*retained[i]));
+    const double cutoff = bestScore >= 0.0 ? bestScore * asFraction
+                                           : bestScore / asFraction;
+    std::vector<double> result(retained.size());
+    double total = 0.0;
+    for (size_t i = 0; i < retained.size(); ++i)
+    {
+        const TangleReadAlignment &alignment = *retained[i];
+        const double margin = std::max(0.0, selectionScore(alignment) - cutoff);
+        const double specificity = alignment.identity * alignedFraction(alignment);
+        result[i] = std::pow(margin + 1e-6, 2.0) * std::max(1e-6, specificity);
+        total += result[i];
+    }
+    if (total <= 0.0)
+        return std::vector<double>(retained.size(), 1.0 / retained.size());
+    for (size_t i = 0; i < result.size(); ++i)
+        result[i] /= total;
+    return result;
+}
+
 std::vector<ReadEvidence> buildEvidence(const QVector<TangleReadAlignment> &alignments,
                                         const TanglePathParameters &parameters)
 {
@@ -165,12 +194,12 @@ std::vector<ReadEvidence> buildEvidence(const QVector<TangleReadAlignment> &alig
                   });
     }
 
-    std::map<QString, std::set<IntPath> > contextsByRead;
+    std::map<QString, std::map<IntPath, int> > contextsByRead;
     std::map<IntPath, int> globalFrequency;
     for (std::map<QString, std::vector<const TangleReadAlignment *> >::const_iterator read = selected.begin();
          read != selected.end(); ++read)
     {
-        std::set<IntPath> &contexts = contextsByRead[read->first];
+        std::map<IntPath, int> &contexts = contextsByRead[read->first];
         for (size_t a = 0; a < read->second.size(); ++a)
         {
             const QVector<int> &thread = read->second[a]->path;
@@ -183,13 +212,13 @@ std::vector<ReadEvidence> buildEvidence(const QVector<TangleReadAlignment> &alig
                     IntPath context;
                     for (int i = 0; i < length; ++i)
                         context.push_back(thread[start + i]);
-                    contexts.insert(context);
+                    ++contexts[context];
                 }
             }
         }
-        for (std::set<IntPath>::const_iterator context = contexts.begin();
+        for (std::map<IntPath, int>::const_iterator context = contexts.begin();
              context != contexts.end(); ++context)
-            ++globalFrequency[*context];
+            globalFrequency[context->first] += context->second;
     }
 
     std::vector<ReadEvidence> evidence;
@@ -209,29 +238,62 @@ std::vector<ReadEvidence> buildEvidence(const QVector<TangleReadAlignment> &alig
                     0.05, 1.0 - std::pow(10.0, -alignment.mappingQuality / 10.0));
             item.confidence = std::max(item.confidence,
                     alignment.identity * alignedFraction(alignment) * mappingConfidence);
-            item.fullThreads.push_back(IntPath(alignment.path.begin(), alignment.path.end()));
         }
         item.confidence = std::max(0.0, std::min(1.0, item.confidence));
-        std::sort(item.fullThreads.begin(), item.fullThreads.end());
-        item.fullThreads.erase(std::unique(item.fullThreads.begin(), item.fullThreads.end()),
-                               item.fullThreads.end());
+        const double ambiguityPenalty = 1.0 /
+                std::sqrt(static_cast<double>(read->second.size()));
+        item.confidence = std::max(0.0, std::min(1.0,
+                item.confidence * ambiguityPenalty));
 
-        double contextTotal = 0.0;
-        const std::set<IntPath> &contexts = contextsByRead[read->first];
-        for (std::set<IntPath>::const_iterator context = contexts.begin();
-             context != contexts.end(); ++context)
+        const std::vector<double> weights = alignmentWeights(
+                    read->second, parameters.asFraction);
+        std::map<IntPath, double> fullRaw;
+        for (size_t i = 0; i < read->second.size(); ++i)
+            fullRaw[IntPath(read->second[i]->path.begin(), read->second[i]->path.end())] += weights[i];
+        double fullTotal = 0.0;
+        for (std::map<IntPath, double>::const_iterator thread = fullRaw.begin();
+             thread != fullRaw.end(); ++thread)
+            fullTotal += thread->second;
+        for (std::map<IntPath, double>::const_iterator thread = fullRaw.begin();
+             thread != fullRaw.end(); ++thread)
+            item.fullThreads.push_back({thread->first,
+                fullTotal > 0.0 ? thread->second / fullTotal : 0.0, 1});
+
+        std::map<IntPath, double> rawContexts;
+        std::map<IntPath, int> expectedCounts;
+        for (size_t i = 0; i < read->second.size(); ++i)
         {
-            ContextEvidence contextEvidence;
-            contextEvidence.pattern = *context;
-            contextEvidence.fraction = double(context->size() - 1) / globalFrequency[*context];
-            contextTotal += contextEvidence.fraction;
-            item.contexts.push_back(contextEvidence);
+            std::map<IntPath, int> localContexts;
+            const QVector<int> &thread = read->second[i]->path;
+            const int threadLength = static_cast<int>(thread.size());
+            const int lastLength = std::min(parameters.contextMax, threadLength);
+            for (int length = parameters.contextMin; length <= lastLength; ++length)
+                for (int start = 0; start + length <= threadLength; ++start)
+                {
+                    IntPath context;
+                    for (int offset = 0; offset < length; ++offset)
+                        context.push_back(thread[start + offset]);
+                    ++localContexts[context];
+                }
+            for (std::map<IntPath, int>::const_iterator context = localContexts.begin();
+                 context != localContexts.end(); ++context)
+            {
+                expectedCounts[context->first] = std::max(expectedCounts[context->first],
+                                                           context->second);
+                rawContexts[context->first] += weights[i] * context->second *
+                        std::pow(static_cast<double>(context->first.size() - 1), 2.0) /
+                        std::max(1, globalFrequency[context->first]);
+            }
         }
-        if (contextTotal > 0.0)
-            for (size_t i = 0; i < item.contexts.size(); ++i)
-                item.contexts[i].fraction /= contextTotal;
-        else
-            item.contexts.clear();
+        double contextTotal = 0.0;
+        for (std::map<IntPath, double>::const_iterator context = rawContexts.begin();
+             context != rawContexts.end(); ++context)
+            contextTotal += context->second;
+        for (std::map<IntPath, double>::const_iterator context = rawContexts.begin();
+             context != rawContexts.end(); ++context)
+            if (contextTotal > 0.0)
+                item.contexts.push_back({context->first,
+                    context->second / contextTotal, expectedCounts[context->first]});
         evidence.push_back(item);
     }
     return evidence;
@@ -248,10 +310,10 @@ std::vector<Bound> visitBounds(const TangleGraph &graph, int sourceSegment,
             continue;
         const TangleSegment &item = graph.segments[segment];
         const int maximum = std::max(1, std::min(parameters.maxCopy,
-                int(std::ceil(item.coverage / (singleCopy * parameters.tauMin)))));
+                int(std::ceil(item.coverage / (singleCopy * parameters.cpTauMin)))));
         Bound bound;
         bound.segment = segment;
-        bound.minimum = strict && item.coverage >= singleCopy * parameters.tauMin ? 1 : 0;
+        bound.minimum = strict && item.coverage >= singleCopy * parameters.cpTauMin ? 1 : 0;
         bound.maximum = maximum;
         result.push_back(bound);
     }
@@ -363,11 +425,11 @@ SolveAttempt buildAndSolve(const TanglePathSearchRequest &request,
         coverageTerms.push_back(cost);
     }
 
-    std::map<IntPath, sat::BoolVar> encodedPatterns;
-    std::function<sat::BoolVar(const IntPath &)> patternPresent = [&](const IntPath &input)
+    std::map<IntPath, sat::IntVar> encodedPatterns;
+    std::function<sat::IntVar(const IntPath &)> patternOccurrences = [&](const IntPath &input)
     {
         const IntPath key = canonicalPattern(input);
-        std::map<IntPath, sat::BoolVar>::const_iterator found = encodedPatterns.find(key);
+        std::map<IntPath, sat::IntVar>::const_iterator found = encodedPatterns.find(key);
         if (found != encodedPatterns.end())
             return found->second;
 
@@ -376,7 +438,7 @@ SolveAttempt buildAndSolve(const TanglePathSearchRequest &request,
         alternatives.push_back(reverseComplement(input));
         std::sort(alternatives.begin(), alternatives.end());
         alternatives.erase(std::unique(alternatives.begin(), alternatives.end()), alternatives.end());
-        std::vector<sat::IntVar> alternativeFlags;
+        std::vector<sat::IntVar> alternativeCounts;
         for (size_t alternative = 0; alternative < alternatives.size(); ++alternative)
         {
             std::vector<sat::IntVar> starts;
@@ -388,40 +450,50 @@ SolveAttempt buildAndSolve(const TanglePathSearchRequest &request,
                             .OnlyEnforceIf(match);
                 starts.push_back(sat::IntVar(match));
             }
-            const sat::BoolVar alternativePresent = model.NewBoolVar();
-            if (starts.empty())
-                model.AddEquality(alternativePresent, 0);
-            else
-                model.AddMaxEquality(sat::IntVar(alternativePresent), starts);
-            alternativeFlags.push_back(sat::IntVar(alternativePresent));
+            const sat::IntVar alternativeCount = model.NewIntVar(
+                        Domain(0, starts.size()));
+            std::vector<sat::IntVar> startIntegers;
+            for (size_t i = 0; i < starts.size(); ++i)
+                startIntegers.push_back(sat::IntVar(starts[i]));
+            model.AddEquality(alternativeCount,
+                              sat::LinearExpr::Sum(startIntegers));
+            alternativeCounts.push_back(alternativeCount);
         }
-        const sat::BoolVar present = model.NewBoolVar();
-        model.AddMaxEquality(sat::IntVar(present), alternativeFlags);
-        encodedPatterns.insert(std::make_pair(key, present));
-        return present;
+        const sat::IntVar occurrenceCount = model.NewIntVar(
+                    Domain(0, maxPositions));
+        model.AddMaxEquality(occurrenceCount, alternativeCounts);
+        encodedPatterns.insert(std::make_pair(key, occurrenceCount));
+        return occurrenceCount;
     };
 
-    std::vector<std::pair<qint64, sat::BoolVar> > readRewards;
+    std::vector<sat::LinearExpr> readRewards;
     for (size_t read = 0; read < evidence.size(); ++read)
     {
-        std::vector<sat::IntVar> fullAlternatives;
         for (size_t thread = 0; thread < evidence[read].fullThreads.size(); ++thread)
-            fullAlternatives.push_back(
-                    sat::IntVar(patternPresent(evidence[read].fullThreads[thread])));
-        const sat::BoolVar fullSupported = model.NewBoolVar();
-        model.AddMaxEquality(sat::IntVar(fullSupported), fullAlternatives);
-        const qint64 fullReward = std::llround(evidence[read].confidence *
-                parameters.fullThreadFraction * parameters.readWeight * objectiveScale);
-        if (fullReward != 0)
-            readRewards.push_back(std::make_pair(fullReward, fullSupported));
+        {
+            const ContextEvidence &threadEvidence = evidence[read].fullThreads[thread];
+            const sat::IntVar occurrences = patternOccurrences(threadEvidence.pattern);
+            const int expected = std::max(1, threadEvidence.expectedCount);
+            const sat::IntVar capped = model.NewIntVar(Domain(0, expected));
+            model.AddLessOrEqual(capped, occurrences);
+            const qint64 reward = std::llround(evidence[read].confidence *
+                    parameters.fullThreadFraction * threadEvidence.fraction /
+                    expected * parameters.readWeight * objectiveScale);
+            if (reward != 0)
+                readRewards.push_back(sat::IntVar(capped) * reward);
+        }
         for (size_t context = 0; context < evidence[read].contexts.size(); ++context)
         {
+            const ContextEvidence &contextEvidence = evidence[read].contexts[context];
+            const sat::IntVar occurrences = patternOccurrences(contextEvidence.pattern);
+            const int expected = std::max(1, contextEvidence.expectedCount);
+            const sat::IntVar capped = model.NewIntVar(Domain(0, expected));
+            model.AddLessOrEqual(capped, occurrences);
             const qint64 reward = std::llround(evidence[read].confidence *
-                    parameters.contextFraction * evidence[read].contexts[context].fraction *
+                    parameters.contextFraction * contextEvidence.fraction / expected *
                     parameters.readWeight * objectiveScale);
             if (reward != 0)
-                readRewards.push_back(std::make_pair(
-                        reward, patternPresent(evidence[read].contexts[context].pattern)));
+                readRewards.push_back(sat::IntVar(capped) * reward);
         }
     }
 
@@ -439,7 +511,7 @@ SolveAttempt buildAndSolve(const TanglePathSearchRequest &request,
     for (size_t i = 0; i < coverageTerms.size(); ++i)
         objective += coverageTerms[i] * coverageMultiplier;
     for (size_t i = 0; i < readRewards.size(); ++i)
-        objective -= sat::IntVar(readRewards[i].second) * (1000 * readRewards[i].first);
+        objective -= readRewards[i] * 1000;
     objective += sat::LinearExpr::Sum(activeFlags) * 1000;
     objective -= 1000;
     model.Minimize(objective);
@@ -472,16 +544,20 @@ SolveAttempt buildAndSolve(const TanglePathSearchRequest &request,
     return result;
 }
 
-bool containsPattern(const IntPath &path, const IntPath &pattern)
+int patternOccurrences(const IntPath &path, const IntPath &pattern)
 {
-    if (pattern.size() > path.size())
-        return false;
-    return std::search(path.begin(), path.end(), pattern.begin(), pattern.end()) != path.end();
-}
-
-bool patternSupported(const IntPath &path, const IntPath &pattern)
-{
-    return containsPattern(path, pattern) || containsPattern(path, reverseComplement(pattern));
+    const IntPath reverse = reverseComplement(pattern);
+    const auto count = [&](const IntPath &target)
+    {
+        if (target.size() > path.size())
+            return 0;
+        int total = 0;
+        for (size_t start = 0; start + target.size() <= path.size(); ++start)
+            if (std::equal(target.begin(), target.end(), path.begin() + start))
+                ++total;
+        return total;
+    };
+    return std::max(count(pattern), count(reverse));
 }
 
 double weightedReadSupport(const std::vector<ReadEvidence> &evidence,
@@ -493,15 +569,24 @@ double weightedReadSupport(const std::vector<ReadEvidence> &evidence,
     double contextWeight = 0.0;
     for (size_t read = 0; read < evidence.size(); ++read)
     {
-        bool full = false;
+        double fullFraction = 0.0;
         for (size_t thread = 0; thread < evidence[read].fullThreads.size(); ++thread)
-            full = full || patternSupported(path, evidence[read].fullThreads[thread]);
+        {
+            const ContextEvidence &item = evidence[read].fullThreads[thread];
+            fullFraction += item.fraction * std::min(
+                        double(patternOccurrences(path, item.pattern)) /
+                        std::max(1, item.expectedCount), 1.0);
+        }
         double contextFraction = 0.0;
         for (size_t context = 0; context < evidence[read].contexts.size(); ++context)
-            if (patternSupported(path, evidence[read].contexts[context].pattern))
-                contextFraction += evidence[read].contexts[context].fraction;
+        {
+            const ContextEvidence &item = evidence[read].contexts[context];
+            contextFraction += item.fraction * std::min(
+                        double(patternOccurrences(path, item.pattern)) /
+                        std::max(1, item.expectedCount), 1.0);
+        }
         confidenceTotal += evidence[read].confidence;
-        fullWeight += evidence[read].confidence * full;
+        fullWeight += evidence[read].confidence * fullFraction;
         contextWeight += evidence[read].confidence * contextFraction;
     }
     if (confidenceTotal <= 0.0)

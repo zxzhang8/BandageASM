@@ -29,6 +29,7 @@ private:
 
     QDoubleSpinBox *m_coverageDispersion;
     QDoubleSpinBox *m_huberDelta;
+    QDoubleSpinBox *m_tauMin;
     QDoubleSpinBox *m_fullThreadFraction;
     QDoubleSpinBox *m_contextFraction;
     QSpinBox *m_contextMin;
