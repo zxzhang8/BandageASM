@@ -46,6 +46,8 @@ TanglePathParameters::TanglePathParameters()
       coverageDispersion(0.25),
       cpHuberDelta(2.0),
       cpTauMin(0.9),
+      cpSingleCopyCoverage(0.0),
+      cpSingleCopyCoverageLocked(true),
       fullThreadFraction(0.4),
       contextFraction(0.6),
       contextMin(2),

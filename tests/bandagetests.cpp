@@ -21,9 +21,11 @@
 #include <QDebug>
 #include <QComboBox>
 #include <QCheckBox>
+#include <QDoubleSpinBox>
 #include <QDir>
 #include <QFile>
 #include <QLineEdit>
+#include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QJsonArray>
@@ -34,6 +36,7 @@
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTableWidget>
+#include <QSpinBox>
 #include <QTextStream>
 #include <QTimer>
 #include "bandagetests.h"
@@ -51,6 +54,7 @@
 #include "../program/globals.h"
 #include "../command_line/commoncommandlinefunctions.h"
 #include "../program/gafparser.h"
+#include "../program/gafvisualization.h"
 #include "../program/graphlayoutio.h"
 #include "../program/bedannotations.h"
 #include "../program/tanglepathsearch.h"
@@ -59,6 +63,7 @@
 #include "../ui/mygraphicsscene.h"
 #include "../ui/nodesequencewidget.h"
 #include "../ui/selectednodespathswidget.h"
+#include "../ui/cpsatadvancedconfigwidget.h"
 
 
 
@@ -1178,6 +1183,8 @@ void BandageTests::tangleBeamSearchAndGafClipping()
 {
     const TanglePathParameters cpDefaults;
     QCOMPARE(cpDefaults.cpTauMin, 0.9);
+    QCOMPARE(cpDefaults.cpSingleCopyCoverage, 0.0);
+    QVERIFY(cpDefaults.cpSingleCopyCoverageLocked);
     QCOMPARE(cpDefaults.fullThreadFraction, 0.4);
     QCOMPARE(cpDefaults.contextFraction, 0.6);
     QCOMPARE(cpDefaults.asFraction, 0.999);
@@ -1266,6 +1273,68 @@ void BandageTests::tangleBeamSearchAndGafClipping()
     QCOMPARE(cpResult.candidates.first().orientedNodeNames,
              QStringList() << "A+" << "B+" << "D+");
 #endif
+}
+
+
+void BandageTests::cpSatCoverageControlAndStatusHelp()
+{
+    createGlobals();
+    TanglePathParameters parameters;
+    parameters.cpSingleCopyCoverage = 20.0;
+    CpSatAdvancedConfigWidget config(0, parameters);
+    QVERIFY(config.findChild<QDoubleSpinBox *>("cpSatSingleCopyCoverage") == 0);
+    QVERIFY(config.findChild<QPushButton *>("cpSatSingleCopyCoverageUnlock") == 0);
+
+    SelectedNodesPathsWidget paths(0, QList<Path>(), "CP-SAT",
+                                   "OPTIMAL_RELAXED_COVERAGE");
+    QPushButton *statusHelp = paths.findChild<QPushButton *>("pathSearchStatusHelpButton");
+    QVERIFY(statusHelp != 0);
+    QVERIFY(!statusHelp->isHidden());
+    QCOMPARE(statusHelp->text(), QString("!"));
+
+    QTemporaryFile gfaFile(QDir::tempPath() + "/bandage-cp-coverage-XXXXXX.gfa");
+    QVERIFY(gfaFile.open());
+    QTextStream gfa(&gfaFile);
+    gfa << "H\tVN:Z:1.0\n";
+    gfa << "S\tX\tAAAA\trd:i:10\n";
+    gfa << "S\tY\tAAAA\trd:i:30\n";
+    gfa << "S\tZ\tAAAA\trd:i:50\n";
+    gfa << "L\tX\t+\tY\t+\t0M\n";
+    gfa << "L\tY\t+\tZ\t+\t0M\n";
+    gfa.flush();
+    gfaFile.close();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(gfaFile.fileName()));
+
+    MainWindow window;
+    QComboBox *algorithm = window.findChild<QComboBox *>("selectedNodesPathAlgorithmComboBox");
+    QDoubleSpinBox *coverage = window.findChild<QDoubleSpinBox *>("selectedNodesPathCoverageSpinBox");
+    QPushButton *unlock = window.findChild<QPushButton *>("selectedNodesPathCoverageUnlockButton");
+    QVERIFY(coverage != 0);
+    QVERIFY(unlock != 0);
+    QCOMPARE(coverage->value(), 0.0);
+    QVERIFY(!coverage->isEnabled());
+    QComboBox *end = window.findChild<QComboBox *>("selectedNodesPathEndComboBox");
+    QVERIFY(algorithm != 0);
+    QVERIFY(end != 0);
+    algorithm->setCurrentIndex(2);
+    std::vector<DeBruijnNode *> selectedNodes;
+    selectedNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes.value("X+"));
+    selectedNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes.value("Y+"));
+    selectedNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes.value("Z+"));
+    window.updateSelectedNodesPathControls(selectedNodes);
+    QCOMPARE(window.m_cpSatParameters.cpSingleCopyCoverage, 20.0);
+    QCOMPARE(coverage->value(), 20.0);
+    end->setCurrentText("Z");
+    QCOMPARE(window.m_cpSatParameters.cpSingleCopyCoverage, 30.0);
+    QCOMPARE(coverage->value(), 30.0);
+
+    unlock->click();
+    QVERIFY(!window.m_cpSatParameters.cpSingleCopyCoverageLocked);
+    QVERIFY(coverage->isEnabled());
+    coverage->setValue(42.0);
+    end->setCurrentText("Y");
+    QCOMPARE(window.m_cpSatParameters.cpSingleCopyCoverage, 42.0);
+    QCOMPARE(coverage->value(), 42.0);
 }
 
 
@@ -1684,6 +1753,103 @@ void BandageTests::gafParser()
     QCOMPARE(result.alignments.first().bandagePathString, QString("232+, 277+"));
     QCOMPARE(result.alignments.first().mappingQuality, 60);
     QCOMPARE(result.warnings.size(), 1);
+}
+
+
+void BandageTests::gafVisualizationAggregation()
+{
+    createGlobals();
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    QTemporaryFile gafFile;
+    QVERIFY(gafFile.open());
+    QTextStream out(&gafFile);
+    out << "query-1\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t60\n";
+    out << "query-1\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t60\n";
+    out << "query-2\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t60\n";
+    out << "query-3\t2000\t0\t2000\t-\t<277<232\t2000\t0\t2000\t1990\t2000\t60\n";
+    out.flush();
+    gafFile.flush();
+
+    const GafParseResult parsed = parseGafFile(gafFile.fileName());
+    QCOMPARE(parsed.alignments.size(), 4);
+    DeBruijnNode *positiveNode = g_assemblyGraph->m_deBruijnGraphNodes.value("232+");
+    QVERIFY(positiveNode != 0);
+    DeBruijnNode *negativeNode = positiveNode->getReverseComplement();
+    DeBruijnEdge *positiveEdge = parsed.alignments.first().path.getEdges().first();
+    QVERIFY(positiveEdge != 0);
+
+    const GafVisualizationData records =
+            buildGafVisualization(parsed.alignments, GAF_COUNT_RECORDS);
+    QCOMPARE(records.alignmentCount, 4);
+    QCOMPARE(records.queryCount, 3);
+    QCOMPARE(records.nodeCount(positiveNode, true), quint64(3));
+    QCOMPARE(records.nodeCount(negativeNode, true), quint64(1));
+    QCOMPARE(records.nodeCount(positiveNode, false), quint64(4));
+    QCOMPARE(records.edgeCount(positiveEdge, true), quint64(3));
+    QCOMPARE(records.edgeCount(positiveEdge, false), quint64(4));
+    QCOMPARE(records.maximum(true), quint64(3));
+    QCOMPARE(records.maximum(false), quint64(4));
+
+    const GafVisualizationData queries =
+            buildGafVisualization(parsed.alignments, GAF_COUNT_UNIQUE_QUERIES);
+    QCOMPARE(queries.nodeCount(positiveNode, true), quint64(2));
+    QCOMPARE(queries.nodeCount(negativeNode, true), quint64(1));
+    QCOMPARE(queries.nodeCount(positiveNode, false), quint64(3));
+    QCOMPARE(queries.edgeCount(positiveEdge, true), quint64(2));
+    QCOMPARE(queries.edgeCount(positiveEdge, false), quint64(3));
+
+    QCOMPARE(gafVisualizationColour(0, 10, GAF_HEAT_LOG).alpha(), 0);
+    QCOMPARE(gafVisualizationColour(1, 1, GAF_HEAT_LINEAR), QColor("#fde725"));
+    QVERIFY(gafVisualizationColour(2, 10, GAF_HEAT_LOG) !=
+            gafVisualizationColour(2, 10, GAF_HEAT_LINEAR));
+}
+
+
+void BandageTests::gafVisualizationRefreshIsManual()
+{
+    createGlobals();
+    MainWindow window;
+    QVERIFY(g_assemblyGraph->loadGraphFromFile(getTestDirectory() + "test_plasmids.gfa"));
+
+    QTemporaryFile gafFile;
+    QVERIFY(gafFile.open());
+    QTextStream out(&gafFile);
+    out << "query-high\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t60\n";
+    out << "query-low\t2000\t0\t2000\t+\t>232>277\t2000\t0\t2000\t1990\t2000\t10\n";
+    out.flush();
+    gafFile.flush();
+
+    GafPathsDialog dialog(0, "input.gaf", parseGafFile(gafFile.fileName()));
+    QSignalSpy changed(&dialog, SIGNAL(visualizationChanged()));
+    QVERIFY(QMetaObject::invokeMethod(&dialog, "visualizeGaf", Qt::DirectConnection));
+    QTRY_COMPARE(changed.count(), 1);
+    QCOMPARE(g_memory->gafVisualization().alignmentCount, 2);
+
+    QLabel *status = dialog.findChild<QLabel *>("gafVisualizationStatus");
+    QVERIFY(status != 0);
+    QVERIFY(!status->text().contains("Out of date"));
+
+    QSpinBox *mapq = 0;
+    const QList<QSpinBox *> spinBoxes = dialog.findChildren<QSpinBox *>();
+    for (int i = 0; i < spinBoxes.size(); ++i)
+    {
+        if (spinBoxes[i]->prefix() == "MAPQ ≥ ")
+        {
+            mapq = spinBoxes[i];
+            break;
+        }
+    }
+    QVERIFY(mapq != 0);
+    mapq->setValue(50);
+    QVERIFY(QMetaObject::invokeMethod(&dialog, "filterByMapq", Qt::DirectConnection));
+    QVERIFY(status->text().contains("Out of date"));
+    QCOMPARE(g_memory->gafVisualization().alignmentCount, 2);
+
+    QVERIFY(QMetaObject::invokeMethod(&dialog, "visualizeGaf", Qt::DirectConnection));
+    QTRY_COMPARE(changed.count(), 2);
+    QCOMPARE(g_memory->gafVisualization().alignmentCount, 1);
+    QVERIFY(!status->text().contains("Out of date"));
 }
 
 

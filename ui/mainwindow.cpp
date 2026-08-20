@@ -26,6 +26,11 @@
 #include <math.h>
 #include "../program/settings.h"
 #include <QClipboard>
+#include <QAbstractButton>
+#include <QDoubleSpinBox>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
 #include <QTransform>
 #include <QFontDialog>
 #include <QColorDialog>
@@ -81,6 +86,32 @@
 #include <QSet>
 #include <QSignalBlocker>
 #include <QCompleter>
+#include "infotextwidget.h"
+
+namespace
+{
+QWidget *createHelpRow(QWidget *parent, QWidget *label, QWidget *field, const QString &help)
+{
+    QWidget *row = new QWidget(parent);
+    QHBoxLayout *layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(new InfoTextWidget(row, help));
+    layout->addWidget(label);
+    layout->addWidget(field, 1);
+    return row;
+}
+
+QWidget *createCoverageControl(QWidget *parent, QDoubleSpinBox *coverage,
+                               QPushButton *unlockButton)
+{
+    QWidget *widget = new QWidget(parent);
+    QHBoxLayout *layout = new QHBoxLayout(widget);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(coverage, 1);
+    layout->addWidget(unlockButton);
+    return widget;
+}
+}
 
 MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     QMainWindow(0),
@@ -88,11 +119,113 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     m_fileToLoadOnStartup(fileToLoadOnStartup), m_drawGraphAfterLoad(drawGraphAfterLoad),
     m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafPathsWidget(0),
     m_selectedEdgePathWidget(0), m_nodeSequenceWidget(0), m_selectedNodesPathsWidget(0),
-    m_cpSatAdvancedConfigWidget(0), m_bedValidCount(0), m_bedSkippedCount(0),
+    m_cpSatAdvancedConfigWidget(0), m_selectedNodesPathAlgorithmRow(0),
+    m_selectedNodesPathStartRow(0), m_selectedNodesPathEndRow(0),
+    m_selectedNodesPathMaxNodesRow(0), m_selectedNodesPathModeRow(0),
+    m_selectedNodesPathCoverageTagRow(0), m_selectedNodesPathCoverageRow(0),
+    m_selectedNodesPathMaxCopyRow(0), m_selectedNodesPathBeamResultsRow(0),
+    m_selectedNodesPathGafScopeRow(0), m_selectedNodesPathTimeLimitRow(0),
+    m_selectedNodesPathCoverageSpinBox(0), m_selectedNodesPathCoverageUnlockButton(0),
+    m_bedValidCount(0), m_bedSkippedCount(0),
     m_alreadyShown(false)
 {
     ui->setupUi(this);
     ui->gridLayout_selectedNodesPaths->setColumnStretch(1, 1);
+
+    m_selectedNodesPathCoverageSpinBox = new QDoubleSpinBox(ui->selectedNodesPathsWidget);
+    m_selectedNodesPathCoverageSpinBox->setRange(0.0, 1000000000.0);
+    m_selectedNodesPathCoverageSpinBox->setDecimals(4);
+    m_selectedNodesPathCoverageSpinBox->setSingleStep(1.0);
+    m_selectedNodesPathCoverageSpinBox->setObjectName("selectedNodesPathCoverageSpinBox");
+    m_selectedNodesPathCoverageUnlockButton = new QPushButton(ui->selectedNodesPathsWidget);
+    m_selectedNodesPathCoverageUnlockButton->setObjectName("selectedNodesPathCoverageUnlockButton");
+    m_selectedNodesPathCoverageUnlockButton->setCheckable(true);
+    m_selectedNodesPathCoverageUnlockButton->setText("Unlock");
+    m_selectedNodesPathCoverageUnlockButton->setToolTip("Unlock to enter single-copy coverage manually");
+    m_selectedNodesPathCoverageSpinBox->setEnabled(false);
+
+    QWidget * coverageField = createCoverageControl(
+                ui->selectedNodesPathsWidget, m_selectedNodesPathCoverageSpinBox,
+                m_selectedNodesPathCoverageUnlockButton);
+    QLabel * coverageLabel = new QLabel("Coverage:", ui->selectedNodesPathsWidget);
+    m_selectedNodesPathCoverageRow = createHelpRow(
+                ui->selectedNodesPathsWidget, coverageLabel, coverageField,
+                "Coverage expected for one copy of a node. While locked, this is automatically "
+                "recalculated as the median of the selected start and end node coverage values "
+                "whenever either endpoint or the coverage tag changes. Unlock it to enter a "
+                "manual value; manual values are kept when endpoints change.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathCoverageRow, 11, 0, 1, 2);
+    m_selectedNodesPathCoverageRow->setVisible(false);
+    connect(m_selectedNodesPathCoverageUnlockButton, &QAbstractButton::toggled,
+            this, [this](bool unlocked)
+            {
+                m_cpSatParameters.cpSingleCopyCoverageLocked = !unlocked;
+                m_selectedNodesPathCoverageSpinBox->setEnabled(unlocked);
+                m_selectedNodesPathCoverageUnlockButton->setText(unlocked ? "Lock" : "Unlock");
+                m_selectedNodesPathCoverageUnlockButton->setToolTip(
+                            unlocked ? "Use manual single-copy coverage"
+                                     : "Unlock to enter single-copy coverage manually");
+                if (!unlocked)
+                    updateCpSatSingleCopyCoverage();
+            });
+    connect(m_selectedNodesPathCoverageSpinBox,
+            QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [this](double value)
+            {
+                if (m_selectedNodesPathCoverageUnlockButton->isChecked())
+                    m_cpSatParameters.cpSingleCopyCoverage = value;
+            });
+
+    m_selectedNodesPathAlgorithmRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathAlgorithmLabel,
+                ui->selectedNodesPathAlgorithmComboBox,
+                "Select the path-search algorithm used for the current selection.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathAlgorithmRow, 0, 0, 1, 2);
+    m_selectedNodesPathStartRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathStartLabel,
+                ui->selectedNodesPathStartComboBox,
+                "Choose the start node for path search.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathStartRow, 2, 0, 1, 2);
+    m_selectedNodesPathEndRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathEndLabel,
+                ui->selectedNodesPathEndComboBox,
+                "Choose the end node for path search.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathEndRow, 3, 0, 1, 2);
+    m_selectedNodesPathMaxNodesRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathMaxNodesLabel,
+                ui->selectedNodesPathMaxNodesSpinBox,
+                "Maximum number of nodes allowed in Standard search mode.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathMaxNodesRow, 4, 0, 1, 2);
+    m_selectedNodesPathModeRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathModeLabel,
+                ui->selectedNodesPathModeComboBox,
+                "Choose whether Standard search returns the top scoring paths quickly or enumerates all paths.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathModeRow, 5, 0, 1, 2);
+    m_selectedNodesPathCoverageTagRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathCoverageTagLabel,
+                ui->selectedNodesPathCoverageTagComboBox,
+                "Choose the numeric GFA tag used as the coverage signal.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathCoverageTagRow, 6, 0, 1, 2);
+    m_selectedNodesPathMaxCopyRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathMaxCopyLabel,
+                ui->selectedNodesPathMaxCopySpinBox,
+                "Limit the number of node copies CP-SAT may assign to a path.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathMaxCopyRow, 7, 0, 1, 2);
+    m_selectedNodesPathBeamResultsRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathBeamResultsLabel,
+                ui->selectedNodesPathBeamResultsSpinBox,
+                "Maximum number of paths returned by Beam search.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathBeamResultsRow, 8, 0, 1, 2);
+    m_selectedNodesPathGafScopeRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathGafScopeLabel,
+                ui->selectedNodesPathGafScopeComboBox,
+                "Choose whether CP-SAT should use all loaded GAF alignments or only the current filtered set.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathGafScopeRow, 9, 0, 1, 2);
+    m_selectedNodesPathTimeLimitRow = createHelpRow(
+                ui->selectedNodesPathsWidget, ui->selectedNodesPathTimeLimitLabel,
+                ui->selectedNodesPathTimeLimitSpinBox,
+                "Solver time budget for CP-SAT.");
+    ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathTimeLimitRow, 10, 0, 1, 2);
 
     // Wrap the original central widget into a tab widget so we can add a GAF tab.
     QWidget * oldCentral = takeCentralWidget();
@@ -231,6 +364,12 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->selectedNodesFindPathsButton, SIGNAL(clicked()), this, SLOT(findPathsInSelectedNodes()));
     connect(ui->selectedNodesPathAlgorithmComboBox, SIGNAL(currentIndexChanged(int)),
             this, SLOT(selectedNodesPathAlgorithmChanged()));
+    connect(ui->selectedNodesPathStartComboBox, SIGNAL(currentIndexChanged(int)),
+            this, SLOT(updateCpSatSingleCopyCoverage()));
+    connect(ui->selectedNodesPathEndComboBox, SIGNAL(currentIndexChanged(int)),
+            this, SLOT(updateCpSatSingleCopyCoverage()));
+    connect(ui->selectedNodesPathCoverageTagComboBox, SIGNAL(currentIndexChanged(int)),
+            this, SLOT(updateCpSatSingleCopyCoverage()));
     connect(ui->selectedNodesPathAdvancedConfigButton, SIGNAL(clicked()),
             this, SLOT(openCpSatAdvancedConfig()));
     connect(ui->selectionModeButton, SIGNAL(toggled(bool)), this, SLOT(selectionModeToggled(bool)));
@@ -379,6 +518,7 @@ void MainWindow::clearManagedTabs()
     m_gafPathsWidget = 0;
 
     g_memory->clearAllQueryPaths();
+    g_memory->clearGafVisualization();
     g_memory->gafPathDialogIsVisible = false;
     g_memory->selectedPathsDialogIsVisible = false;
 }
@@ -595,6 +735,10 @@ MainWindow::GafLoadResult MainWindow::loadGafPathsFile(const QString &fileName,
     connect(m_gafPathsWidget, SIGNAL(selectionChanged()), this, SLOT(selectionChanged()));
     connect(m_gafPathsWidget, SIGNAL(highlightRequested()), this, SLOT(focusOnGafSelection()));
     connect(m_gafPathsWidget, SIGNAL(clearHighlightRequested()), this, SLOT(clearGafHighlighting()));
+    connect(m_gafPathsWidget, SIGNAL(visualizationChanged()),
+            g_graphicsView->viewport(), SLOT(update()));
+    connect(m_gafPathsWidget, SIGNAL(visualizationRequested()),
+            this, SLOT(focusOnGafVisualization()));
 
     updateSelectedNodesPathControls(m_scene->getSelectedNodes());
     m_tabWidget->setCurrentWidget(m_gafPathsWidget);
@@ -699,6 +843,12 @@ void MainWindow::focusOnGafSelection()
 
     //Zoom to the currently selected nodes/edges.
     zoomToSelection();
+}
+
+void MainWindow::focusOnGafVisualization()
+{
+    if (m_tabWidget != 0 && m_tabWidget->count() > 0)
+        m_tabWidget->setCurrentIndex(0);
 }
 
 void MainWindow::focusOnSelectedNodesPaths()
@@ -1023,7 +1173,10 @@ void MainWindow::findPathsInSelectedNodes()
         tangleRequest.source = startBase;
         tangleRequest.target = endBase;
         if (selectedAlgorithm == 2)
+        {
+            updateCpSatSingleCopyCoverage();
             tangleRequest.parameters = m_cpSatParameters;
+        }
         tangleRequest.parameters.maxCopy = ui->selectedNodesPathMaxCopySpinBox->value();
         tangleRequest.parameters.topK = ui->selectedNodesPathBeamResultsSpinBox->value();
         tangleRequest.parameters.timeLimitSeconds = ui->selectedNodesPathTimeLimitSpinBox->value();
@@ -1382,20 +1535,14 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     const bool beam = algorithm == 1;
     const bool cpSat = algorithm == 2;
 
-    ui->selectedNodesPathMaxNodesLabel->setVisible(standard);
-    ui->selectedNodesPathMaxNodesSpinBox->setVisible(standard);
-    ui->selectedNodesPathModeLabel->setVisible(standard);
-    ui->selectedNodesPathModeComboBox->setVisible(standard);
-    ui->selectedNodesPathCoverageTagLabel->setVisible(!standard);
-    ui->selectedNodesPathCoverageTagComboBox->setVisible(!standard);
-    ui->selectedNodesPathMaxCopyLabel->setVisible(!standard);
-    ui->selectedNodesPathMaxCopySpinBox->setVisible(!standard);
-    ui->selectedNodesPathBeamResultsLabel->setVisible(beam);
-    ui->selectedNodesPathBeamResultsSpinBox->setVisible(beam);
-    ui->selectedNodesPathGafScopeLabel->setVisible(cpSat);
-    ui->selectedNodesPathGafScopeComboBox->setVisible(cpSat);
-    ui->selectedNodesPathTimeLimitLabel->setVisible(cpSat);
-    ui->selectedNodesPathTimeLimitSpinBox->setVisible(cpSat);
+    m_selectedNodesPathMaxNodesRow->setVisible(standard);
+    m_selectedNodesPathModeRow->setVisible(standard);
+    m_selectedNodesPathCoverageTagRow->setVisible(!standard);
+    m_selectedNodesPathMaxCopyRow->setVisible(!standard);
+    m_selectedNodesPathBeamResultsRow->setVisible(beam);
+    m_selectedNodesPathGafScopeRow->setVisible(cpSat);
+    m_selectedNodesPathTimeLimitRow->setVisible(cpSat);
+    m_selectedNodesPathCoverageRow->setVisible(cpSat);
     ui->selectedNodesPathAdvancedConfigWidget->setVisible(cpSat);
     const bool customCpSatConfig = !cpSatAdvancedConfigIsDefault();
     ui->selectedNodesPathAdvancedConfigWarningLabel->setVisible(customCpSatConfig);
@@ -1420,16 +1567,17 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
         coverageIndex = 0;
     ui->selectedNodesPathCoverageTagComboBox->setCurrentIndex(coverageIndex);
 
-    ui->selectedNodesPathStartComboBox->setEnabled(enable);
-    ui->selectedNodesPathEndComboBox->setEnabled(enable);
+    m_selectedNodesPathStartRow->setEnabled(enable);
+    m_selectedNodesPathEndRow->setEnabled(enable);
     ui->selectedNodesPathReverseButton->setEnabled(enable);
-    ui->selectedNodesPathMaxNodesSpinBox->setEnabled(enable);
-    ui->selectedNodesPathModeComboBox->setEnabled(enable);
-    ui->selectedNodesPathCoverageTagComboBox->setEnabled(enable && !coverageTags.isEmpty());
-    ui->selectedNodesPathMaxCopySpinBox->setEnabled(enable);
-    ui->selectedNodesPathBeamResultsSpinBox->setEnabled(enable);
-    ui->selectedNodesPathGafScopeComboBox->setEnabled(enable && m_gafPathsWidget != 0);
-    ui->selectedNodesPathTimeLimitSpinBox->setEnabled(enable);
+    m_selectedNodesPathMaxNodesRow->setEnabled(enable);
+    m_selectedNodesPathModeRow->setEnabled(enable);
+    m_selectedNodesPathCoverageTagRow->setEnabled(enable && !coverageTags.isEmpty());
+    m_selectedNodesPathMaxCopyRow->setEnabled(enable);
+    m_selectedNodesPathBeamResultsRow->setEnabled(enable);
+    m_selectedNodesPathGafScopeRow->setEnabled(enable && m_gafPathsWidget != 0);
+    m_selectedNodesPathTimeLimitRow->setEnabled(enable);
+    m_selectedNodesPathCoverageRow->setEnabled(enable && !coverageTags.isEmpty());
 
     QString status;
     bool prerequisitesMet = enable;
@@ -1454,7 +1602,10 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     ui->selectedNodesFindPathsButton->setEnabled(prerequisitesMet);
 
     if (!enable)
+    {
+        updateCpSatSingleCopyCoverage();
         return;
+    }
 
     ui->selectedNodesPathMaxNodesSpinBox->setRange(g_settings->maxQueryPathNodes.min,
                                                    g_settings->maxQueryPathNodes.max);
@@ -1481,6 +1632,8 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     else if (baseNames.size() > 1)
         ui->selectedNodesPathEndComboBox->setCurrentIndex(1);
 
+    updateCpSatSingleCopyCoverage();
+
 }
 
 
@@ -1489,12 +1642,50 @@ void MainWindow::selectedNodesPathAlgorithmChanged()
     updateSelectedNodesPathControls(m_scene->getSelectedNodes());
 }
 
+void MainWindow::updateCpSatSingleCopyCoverage()
+{
+    const QString coverageTag = ui->selectedNodesPathCoverageTagComboBox->currentText();
+    const QString startBase = ui->selectedNodesPathStartComboBox->currentText().trimmed();
+    const QString endBase = ui->selectedNodesPathEndComboBox->currentText().trimmed();
+    const auto coverageForNode = [coverageTag](const QString &baseName, bool *ok)
+    {
+        DeBruijnNode *node = g_assemblyGraph->m_deBruijnGraphNodes.value(baseName + "+", 0);
+        if (node == 0)
+            node = g_assemblyGraph->m_deBruijnGraphNodes.value(baseName + "-", 0);
+        if (node == 0 || coverageTag.isEmpty())
+        {
+            *ok = false;
+            return 0.0;
+        }
+        const double value = node->getGfaTagValue(coverageTag).toDouble(ok);
+        if (*ok && value <= 0.0)
+            *ok = false;
+        return value;
+    };
+
+    bool startOk = false;
+    bool endOk = false;
+    const double startCoverage = coverageForNode(startBase, &startOk);
+    const double endCoverage = coverageForNode(endBase, &endOk);
+    const double automaticCoverage = startOk && endOk
+            ? (startCoverage + endCoverage) / 2.0 : 0.0;
+
+    if (m_cpSatParameters.cpSingleCopyCoverageLocked)
+    {
+        m_cpSatParameters.cpSingleCopyCoverage = automaticCoverage;
+        if (m_selectedNodesPathCoverageSpinBox != 0)
+            m_selectedNodesPathCoverageSpinBox->setValue(automaticCoverage);
+    }
+}
+
 bool MainWindow::cpSatAdvancedConfigIsDefault() const
 {
     const TanglePathParameters defaults;
     return m_cpSatParameters.coverageDispersion == defaults.coverageDispersion &&
             m_cpSatParameters.cpHuberDelta == defaults.cpHuberDelta &&
             m_cpSatParameters.cpTauMin == defaults.cpTauMin &&
+            m_cpSatParameters.cpSingleCopyCoverageLocked ==
+                defaults.cpSingleCopyCoverageLocked &&
             m_cpSatParameters.fullThreadFraction == defaults.fullThreadFraction &&
             m_cpSatParameters.contextFraction == defaults.contextFraction &&
             m_cpSatParameters.contextMin == defaults.contextMin &&
@@ -1515,13 +1706,18 @@ void MainWindow::openCpSatAdvancedConfig()
         return;
     }
 
+    updateCpSatSingleCopyCoverage();
     m_cpSatAdvancedConfigWidget = new CpSatAdvancedConfigWidget(
                 m_tabWidget, m_cpSatParameters);
     m_tabWidget->addTab(m_cpSatAdvancedConfigWidget, "CP-SAT advanced config");
     connect(m_cpSatAdvancedConfigWidget, &CpSatAdvancedConfigWidget::accepted,
             this, [this](const TanglePathParameters &parameters)
             {
+                const double coverage = m_cpSatParameters.cpSingleCopyCoverage;
+                const bool coverageLocked = m_cpSatParameters.cpSingleCopyCoverageLocked;
                 m_cpSatParameters = parameters;
+                m_cpSatParameters.cpSingleCopyCoverage = coverage;
+                m_cpSatParameters.cpSingleCopyCoverageLocked = coverageLocked;
                 updateSelectedNodesPathControls(m_scene->getSelectedNodes());
             });
     connect(m_cpSatAdvancedConfigWidget, &CpSatAdvancedConfigWidget::closeRequested,
@@ -3202,7 +3398,8 @@ void MainWindow::setInfoTexts()
                                         "with the 'Around BLAST hits' graph scope and the 'BLAST "
                                         "hits' colour modes.");
     ui->gafInfoText->setInfoText("Import a GAF file (graph alignments) to list all paths. "
-                                 "Select path(s) and click 'Highlight selected paths' to select and display the path on the graph.");
+                                 "Select path(s) and click 'Highlight selected paths' to select and display them on the graph. "
+                                 "The GAF visualization controls aggregate the complete current filter result into a node-and-edge support heatmap.");
     ui->bedInfoText->setInfoText("Import BED3-BED12 annotations whose first column is a graph node name. "
                                  "Coordinates are zero-based, half-open positions local to that node. "
                                  "The strand column controls which node orientation receives the annotation.<br><br>"

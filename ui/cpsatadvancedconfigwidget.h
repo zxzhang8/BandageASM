@@ -6,6 +6,7 @@
 
 class QDoubleSpinBox;
 class QSpinBox;
+class QPushButton;
 
 class CpSatAdvancedConfigWidget : public QWidget
 {

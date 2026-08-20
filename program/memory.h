@@ -24,6 +24,7 @@
 #include <QStringList>
 #include "../graph/querydistance.h"
 #include "../graph/path.h"
+#include "gafvisualization.h"
 
 class Memory
 {
@@ -42,6 +43,12 @@ public:
     bool clearQueryPaths(PathHighlightSource source);
     bool clearAllQueryPaths();
     bool queryPathHighlightIsVisible() const;
+    void setGafVisualization(const GafVisualizationData &data);
+    bool clearGafVisualization();
+    bool gafVisualizationIsVisible() const {return m_gafVisualizationVisible;}
+    const GafVisualizationData &gafVisualization() const {return m_gafVisualization;}
+    void setGafHeatScale(GafHeatScale scale) {m_gafHeatScale = scale;}
+    GafHeatScale gafHeatScale() const {return m_gafHeatScale;}
 
     QString rememberedPath;
 
@@ -70,6 +77,10 @@ public:
     //This stores the currently selected query path in a query path dialog.
     QList<Path> queryPaths;
     PathHighlightSource pathHighlightSource;
+
+    GafVisualizationData m_gafVisualization;
+    GafHeatScale m_gafHeatScale;
+    bool m_gafVisualizationVisible;
 
     int terminalWidth;
 };

@@ -47,6 +47,8 @@ class NodeSequenceWidget;
 class SelectedNodesPathsWidget;
 class CpSatAdvancedConfigWidget;
 class QDockWidget;
+class QDoubleSpinBox;
+class QPushButton;
 class BandageTests;
 
 namespace Ui {
@@ -80,6 +82,19 @@ private:
     NodeSequenceWidget * m_nodeSequenceWidget;
     SelectedNodesPathsWidget * m_selectedNodesPathsWidget;
     CpSatAdvancedConfigWidget * m_cpSatAdvancedConfigWidget;
+    QWidget * m_selectedNodesPathAlgorithmRow;
+    QWidget * m_selectedNodesPathStartRow;
+    QWidget * m_selectedNodesPathEndRow;
+    QWidget * m_selectedNodesPathMaxNodesRow;
+    QWidget * m_selectedNodesPathModeRow;
+    QWidget * m_selectedNodesPathCoverageTagRow;
+    QWidget * m_selectedNodesPathCoverageRow;
+    QWidget * m_selectedNodesPathMaxCopyRow;
+    QWidget * m_selectedNodesPathBeamResultsRow;
+    QWidget * m_selectedNodesPathGafScopeRow;
+    QWidget * m_selectedNodesPathTimeLimitRow;
+    QDoubleSpinBox * m_selectedNodesPathCoverageSpinBox;
+    QPushButton * m_selectedNodesPathCoverageUnlockButton;
     TanglePathParameters m_cpSatParameters;
     QString m_bedFileName;
     int m_bedValidCount;
@@ -206,12 +221,14 @@ private slots:
     void bedDisplaySettingsChanged();
     void clearGafHighlighting();
     void focusOnGafSelection();
+    void focusOnGafVisualization();
     void focusOnSelectedNodesPaths();
     void generateSequenceFromSelectedEdges();
     void findPathsInSelectedNodes();
     void reverseSelectedNodesPathEndpoints();
     void selectionModeToggled(bool enabled);
     void selectedNodesPathAlgorithmChanged();
+    void updateCpSatSingleCopyCoverage();
     void openCpSatAdvancedConfig();
     void nodeWidthChanged();
     void saveEntireGraphToFasta();

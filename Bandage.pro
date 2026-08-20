@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Bandage.  If not, see <http://www.gnu.org/licenses/>.
 
-QT       += core gui svg widgets
+QT       += core gui svg widgets concurrent
 
 TARGET = Bandage
 TEMPLATE = app
@@ -69,6 +69,7 @@ SOURCES += \
     program/main.cpp\
     program/settings.cpp \
     program/pathsearch.cpp \
+    program/gafvisualization.cpp \
     program/tanglepathsearch.cpp \
     program/beamsearchtanglepathfinder.cpp \
     program/cpsattanglepathfinder.cpp \
@@ -172,6 +173,7 @@ HEADERS  += \
     program/bedannotations.h \
     program/settings.h \
     program/pathsearch.h \
+    program/gafvisualization.h \
     program/tanglepathsearch.h \
     program/tanglepathworker.h \
     program/graphlayoutio.h \

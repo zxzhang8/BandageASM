@@ -31,6 +31,8 @@ Memory::Memory()
     gafPathDialogIsVisible = false;
     selectedPathsDialogIsVisible = false;
     pathHighlightSource = NO_PATH_HIGHLIGHT;
+    m_gafHeatScale = GAF_HEAT_LOG;
+    m_gafVisualizationVisible = false;
 
     userSpecifiedPath = Path();
     userSpecifiedPathString = "";
@@ -54,6 +56,7 @@ void Memory::clearGraphSpecificMemory()
     userSpecifiedPathString = "";
     userSpecifiedPathCircular = false;
     clearAllQueryPaths();
+    clearGafVisualization();
     queryPathDialogIsVisible = false;
     gafPathDialogIsVisible = false;
     selectedPathsDialogIsVisible = false;
@@ -63,6 +66,22 @@ void Memory::clearGraphSpecificMemory()
     distancePathSearchQuery2 = "";
     distancePathSearchQuery1Path = "";
     distancePathSearchQuery2Path = "";
+}
+
+
+void Memory::setGafVisualization(const GafVisualizationData &data)
+{
+    m_gafVisualization = data;
+    m_gafVisualizationVisible = !data.cancelled;
+}
+
+
+bool Memory::clearGafVisualization()
+{
+    const bool changed = m_gafVisualizationVisible || !m_gafVisualization.isEmpty();
+    m_gafVisualization = GafVisualizationData();
+    m_gafVisualizationVisible = false;
+    return changed;
 }
 
 

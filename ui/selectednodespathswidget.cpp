@@ -39,6 +39,44 @@
 
 namespace
 {
+QString statusExplanation(const QString &status)
+{
+    if (status == "OPTIMAL")
+        return "CP-SAT found a valid path and proved that no path has a better objective "
+                "value under the current constraints and parameters. Optimal refers to the "
+                "mathematical model; it does not by itself prove biological correctness.";
+    if (status == "FEASIBLE")
+        return "CP-SAT found a valid path, but did not prove that it is optimal. This usually "
+                "means the time limit was reached while a usable solution was available.";
+    if (status == "OPTIMAL_RELAXED_COVERAGE")
+        return "The strict model was infeasible. CP-SAT retried after allowing high-coverage "
+                "internal nodes to be omitted, then found and proved an optimal solution for "
+                "that relaxed model. Coverage still affects copy limits and objective scoring.";
+    if (status == "FEASIBLE_RELAXED_COVERAGE")
+        return "The strict model was infeasible. CP-SAT found a valid solution after allowing "
+                "high-coverage internal nodes to be omitted, but did not prove that the relaxed "
+                "solution is optimal.";
+    if (status == "INFEASIBLE")
+        return "CP-SAT proved that no path satisfies the hard constraints, including after the "
+                "automatic coverage relaxation retry.";
+    if (status == "UNKNOWN")
+        return "CP-SAT neither found a valid path nor proved the model infeasible, commonly "
+                "because the time limit was reached before either conclusion.";
+    if (status == "MODEL_INVALID")
+        return "OR-Tools rejected the generated mathematical model as invalid. This indicates "
+                "a model construction or numeric-range problem rather than an ordinary no-path result.";
+    if (status == "CANCELLED")
+        return "The search was cancelled before completion.";
+    if (status == "ORTOOLS_UNAVAILABLE")
+        return "This Bandage build was compiled without OR-Tools, so CP-SAT is unavailable.";
+    if (status == "OK")
+        return "The selected path-search algorithm completed successfully.";
+    if (status == "BEAM_SEARCH")
+        return "Beam search was selected. This label identifies the algorithm rather than an "
+                "OR-Tools optimality guarantee.";
+    return "This is the completion status reported by the selected path-search algorithm.";
+}
+
 class SelectedPathsTableWidget : public QTableWidget
 {
 public:
@@ -71,7 +109,8 @@ SelectedNodesPathsWidget::SelectedNodesPathsWidget(
     m_table(new SelectedPathsTableWidget(this)),
     m_highlightButton(new QPushButton("Highlight selected paths", this)),
     m_highlightAllButton(new QPushButton("Highlight all paths", this)),
-    m_exportFastaButton(new QPushButton("Export FASTA", this))
+    m_exportFastaButton(new QPushButton("Export FASTA", this)),
+    m_statusHelpButton(new QPushButton("!", this))
 {
     QVBoxLayout * layout = new QVBoxLayout(this);
 
@@ -80,7 +119,20 @@ SelectedNodesPathsWidget::SelectedNodesPathsWidget(
     layout->addWidget(title);
 
     m_infoLabel->setWordWrap(true);
-    layout->addWidget(m_infoLabel);
+    QHBoxLayout *infoLayout = new QHBoxLayout();
+    infoLayout->addWidget(m_infoLabel);
+    m_statusHelpButton->setObjectName("pathSearchStatusHelpButton");
+    m_statusHelpButton->setFixedSize(18, 18);
+    m_statusHelpButton->setFlat(true);
+    m_statusHelpButton->setCursor(Qt::PointingHandCursor);
+    m_statusHelpButton->setToolTip("Explain this solver status");
+    m_statusHelpButton->setStyleSheet(
+                "QPushButton { color: white; background: #1976d2; border: none; "
+                "border-radius: 9px; font-weight: bold; padding: 0px; } "
+                "QPushButton:hover { background: #0d47a1; }");
+    infoLayout->addWidget(m_statusHelpButton, 0, Qt::AlignTop);
+    infoLayout->addStretch();
+    layout->addLayout(infoLayout);
 
     m_table->setColumnCount(6);
     m_table->setHorizontalHeaderLabels(QStringList() << "Nodes" << "Length\n(bp)"
@@ -106,6 +158,7 @@ SelectedNodesPathsWidget::SelectedNodesPathsWidget(
     connect(m_highlightButton, SIGNAL(clicked()), this, SLOT(highlightSelectedPaths()));
     connect(m_highlightAllButton, SIGNAL(clicked()), this, SLOT(highlightAllPaths()));
     connect(m_exportFastaButton, SIGNAL(clicked()), this, SLOT(exportSelectedPathSequence()));
+    connect(m_statusHelpButton, SIGNAL(clicked()), this, SLOT(showStatusExplanation()));
 }
 
 
@@ -192,6 +245,15 @@ void SelectedNodesPathsWidget::populateTable()
     if (!m_status.isEmpty())
         info += " Status: " + m_status + ".";
     m_infoLabel->setText(info);
+    m_statusHelpButton->setVisible(!m_status.isEmpty());
+}
+
+void SelectedNodesPathsWidget::showStatusExplanation()
+{
+    if (m_status.isEmpty())
+        return;
+    QMessageBox::information(this, "Status: " + m_status,
+                             statusExplanation(m_status));
 }
 
 

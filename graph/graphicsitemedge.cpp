@@ -23,6 +23,7 @@
 #include <QPen>
 #include "../program/globals.h"
 #include "../program/settings.h"
+#include "../program/memory.h"
 #include "debruijnnode.h"
 #include "ogdfnode.h"
 #include <QLineF>
@@ -52,8 +53,29 @@ void GraphicsItemEdge::paint(QPainter * painter, const QStyleOptionGraphicsItem 
     QColor penColour;
     if (isSelected())
         penColour = g_settings->selectionColour;
+    else if (g_memory->gafVisualizationIsVisible())
+    {
+        const GafVisualizationData &visualization = g_memory->gafVisualization();
+        const quint64 support = visualization.edgeCount(m_deBruijnEdge, g_settings->doubleMode);
+        if (support > 0)
+        {
+            penColour = gafVisualizationColour(support,
+                                               visualization.maximum(g_settings->doubleMode),
+                                               g_memory->gafHeatScale());
+            setToolTip(QString("GAF support: %1 %2")
+                       .arg(support).arg(gafCountBasisLabel(visualization.countBasis)));
+        }
+        else
+        {
+            penColour = g_settings->edgeColour;
+            setToolTip(QString());
+        }
+    }
     else
+    {
         penColour = g_settings->edgeColour;
+        setToolTip(QString());
+    }
     QPen edgePen(QBrush(penColour), edgeWidth, Qt::SolidLine, Qt::RoundCap);
     painter->setPen(edgePen);
     painter->drawPath(path());

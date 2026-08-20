@@ -50,6 +50,7 @@ private:
     QPushButton * m_highlightButton;
     QPushButton * m_highlightAllButton;
     QPushButton * m_exportFastaButton;
+    QPushButton * m_statusHelpButton;
 
     void populateTable();
     void updateButtons();
@@ -61,6 +62,7 @@ private slots:
     void highlightSelectedPaths();
     void highlightAllPaths();
     void exportSelectedPathSequence();
+    void showStatusExplanation();
 
 signals:
     void selectionChanged();

@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Bandage.  If not, see <http://www.gnu.org/licenses/>.
 
-QT       += core gui svg testlib
+QT       += core gui svg testlib concurrent
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -66,6 +66,7 @@ SOURCES += \
     program/graphlayoutio.cpp \
     program/bedannotations.cpp \
     program/gafparser.cpp \
+    program/gafvisualization.cpp \
     program/globals.cpp \
     program/graphlayoutworker.cpp \
     graph/debruijnnode.cpp \
@@ -168,6 +169,7 @@ HEADERS  += \
     program/tanglepathworker.h \
     program/graphlayoutio.h \
     program/gafparser.h \
+    program/gafvisualization.h \
     program/globals.h \
     program/graphlayoutworker.h \
     graph/debruijnnode.h \

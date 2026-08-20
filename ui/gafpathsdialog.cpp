@@ -19,6 +19,7 @@
 
 #include <QAbstractItemView>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -39,6 +40,14 @@
 #include <QLineEdit>
 #include <QScrollBar>
 #include <QTextStream>
+#include <QFuture>
+#include <QFutureWatcher>
+#include <QImage>
+#include <QMetaObject>
+#include <QPixmap>
+#include <QPointer>
+#include <QProgressDialog>
+#include <QtConcurrent/QtConcurrentRun>
 #include "../graph/debruijnnode.h"
 #include "../graph/graphicsitemnode.h"
 #include "../program/globals.h"
@@ -63,6 +72,7 @@ bool nodeMatchesFilter(DeBruijnNode * node, const QString &filter)
     return filterHasSign ? node->getName() == filter
                          : node->getNameWithoutSign() == filter;
 }
+
 }
 
 GafPathsTableView::GafPathsTableView(QWidget *parent)
@@ -238,6 +248,8 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_highlightAllButton(new QPushButton("Highlight all paths", this)),
     m_clearHighlightButton(new QPushButton("Clear selection", this)),
     m_saveFilteredButton(new QPushButton("Save filtered GAF", this)),
+    m_visualizeButton(new QPushButton("Visualize GAF", this)),
+    m_clearVisualizationButton(new QPushButton("Clear visualization", this)),
     m_filterButton(new QPushButton("Filter", this)),
     m_resetFilterButton(new QPushButton("Reset", this)),
     m_prevPageButton(new QPushButton("Prev", this)),
@@ -246,10 +258,20 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_nodeCountFilterSpinBox(new QSpinBox(this)),
     m_nodeFilterLineEdit(new QLineEdit(this)),
     m_nodeFilterModeComboBox(new QComboBox(this)),
+    m_countBasisComboBox(new QComboBox(this)),
+    m_heatScaleComboBox(new QComboBox(this)),
     m_pageSizeSpinBox(new QSpinBox(this)),
     m_pageCurrentLineEdit(new QLineEdit(this)),
     m_pageTotalLabel(new QLabel(this)),
-    m_warningLabel(new QLabel(this))
+    m_warningLabel(new QLabel(this)),
+    m_visualizationStatusLabel(new QLabel(this)),
+    m_visualizationLegendLabel(new QLabel(this)),
+    m_filterRevision(0),
+    m_visualizedFilterRevision(-1),
+    m_visualizationBuildRevision(-1),
+    m_visualizationRunning(false),
+    m_visualizationWatcher(new QFutureWatcher<GafVisualizationData>(this)),
+    m_visualizationProgress(0)
 {
     setWindowTitle("GAF Paths");
 
@@ -311,6 +333,35 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     paginationLayout->addStretch();
     layout->addLayout(paginationLayout);
 
+    QHBoxLayout * visualizationLayout = new QHBoxLayout();
+    QLabel * visualizationTitle = new QLabel("GAF visualization", this);
+    QFont visualizationTitleFont = visualizationTitle->font();
+    visualizationTitleFont.setBold(true);
+    visualizationTitle->setFont(visualizationTitleFont);
+    visualizationLayout->addWidget(visualizationTitle);
+    m_visualizeButton->setObjectName("gafVisualizeButton");
+    m_visualizeButton->setToolTip("Build or refresh a heatmap from every GAF record matching the current filters.");
+    visualizationLayout->addWidget(m_visualizeButton);
+    m_clearVisualizationButton->setObjectName("gafClearVisualizationButton");
+    visualizationLayout->addWidget(m_clearVisualizationButton);
+    visualizationLayout->addWidget(new QLabel("Count by:", this));
+    m_countBasisComboBox->addItem("Records", int(GAF_COUNT_RECORDS));
+    m_countBasisComboBox->addItem("Unique queries", int(GAF_COUNT_UNIQUE_QUERIES));
+    m_countBasisComboBox->setObjectName("gafVisualizationCountBasis");
+    m_countBasisComboBox->setToolTip("Records counts each alignment once per node or edge. Unique queries counts each query once per node or edge across all of its alignments.");
+    visualizationLayout->addWidget(m_countBasisComboBox);
+    visualizationLayout->addWidget(new QLabel("Scale:", this));
+    m_heatScaleComboBox->addItem("Log", int(GAF_HEAT_LOG));
+    m_heatScaleComboBox->addItem("Linear", int(GAF_HEAT_LINEAR));
+    m_heatScaleComboBox->setObjectName("gafVisualizationScale");
+    visualizationLayout->addWidget(m_heatScaleComboBox);
+    m_visualizationLegendLabel->setMinimumWidth(180);
+    visualizationLayout->addWidget(m_visualizationLegendLabel);
+    m_visualizationStatusLabel->setWordWrap(true);
+    m_visualizationStatusLabel->setObjectName("gafVisualizationStatus");
+    visualizationLayout->addWidget(m_visualizationStatusLabel, 1);
+    layout->addLayout(visualizationLayout);
+
     QHBoxLayout * buttonLayout = new QHBoxLayout();
     buttonLayout->addWidget(m_highlightButton);
     buttonLayout->addWidget(m_highlightAllButton);
@@ -343,6 +394,8 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     populateTable();
     showWarnings();
     updateButtons();
+    updateVisualizationLegend();
+    updateVisualizationControls();
 
     connect(m_table->selectionModel(), SIGNAL(selectionChanged(QItemSelection,QItemSelection)),
             this, SLOT(onSelectionChanged()));
@@ -357,17 +410,31 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     connect(m_pageSizeSpinBox, SIGNAL(valueChanged(int)), this, SLOT(pageSizeChanged(int)));
     connect(m_pageCurrentLineEdit, SIGNAL(returnPressed()), this, SLOT(pageCurrentEdited()));
     connect(m_table->horizontalHeader(), SIGNAL(sectionClicked(int)), this, SLOT(handleHeaderClicked(int)));
+    connect(m_visualizeButton, SIGNAL(clicked()), this, SLOT(visualizeGaf()));
+    connect(m_clearVisualizationButton, SIGNAL(clicked()), this, SLOT(clearVisualization()));
+    connect(m_heatScaleComboBox, SIGNAL(currentIndexChanged(int)),
+            this, SLOT(visualizationScaleChanged(int)));
+    connect(m_countBasisComboBox, SIGNAL(currentIndexChanged(int)),
+            this, SLOT(visualizationBasisChanged(int)));
+    connect(m_visualizationWatcher, SIGNAL(finished()), this, SLOT(visualizationFinished()));
 }
 
 
 GafPathsDialog::~GafPathsDialog()
 {
+    if (m_visualizationCancelled)
+        m_visualizationCancelled->store(true);
+    if (m_visualizationWatcher->isRunning())
+        m_visualizationWatcher->waitForFinished();
+    g_memory->clearGafVisualization();
+    if (g_graphicsView != 0)
+        g_graphicsView->viewport()->update();
+
     g_memory->gafPathDialogIsVisible = false;
 
     if (g_memory->clearQueryPaths(Memory::GAF_PATH_HIGHLIGHT))
         emit selectionChanged();
 }
-
 
 bool GafPathsDialog::writeFilteredGaf(const QString &fileName, QString * errorMessage) const
 {
@@ -471,8 +538,156 @@ void GafPathsDialog::updateButtons()
                                     m_currentMapqThreshold != 0 ||
                                     m_currentNodeCountThreshold != 0 ||
                                     !m_nodeFilters.isEmpty());
+    updateVisualizationControls();
 }
 
+
+void GafPathsDialog::updateVisualizationControls()
+{
+    const bool active = g_memory->gafVisualizationIsVisible();
+    m_visualizeButton->setEnabled(!m_visualizationRunning);
+    m_visualizeButton->setText(active ? "Refresh visualization" : "Visualize GAF");
+    m_clearVisualizationButton->setEnabled(active && !m_visualizationRunning);
+    m_countBasisComboBox->setEnabled(!m_visualizationRunning);
+    m_heatScaleComboBox->setEnabled(!m_visualizationRunning);
+
+    if (m_visualizationRunning)
+    {
+        m_visualizationStatusLabel->setText("Aggregating filtered GAF records...");
+        return;
+    }
+    if (!active)
+    {
+        m_visualizationStatusLabel->setText("Not visualized");
+        return;
+    }
+
+    const GafVisualizationData &data = g_memory->gafVisualization();
+    QString status = QString("%1 records, %2 queries; max support %3")
+            .arg(data.alignmentCount).arg(data.queryCount)
+            .arg(data.maximum(g_settings->doubleMode));
+    if (m_visualizedFilterRevision != m_filterRevision ||
+            data.countBasis != GafCountBasis(m_countBasisComboBox->currentData().toInt()))
+        status += " — Out of date; refresh to update";
+    m_visualizationStatusLabel->setText(status);
+}
+
+
+void GafPathsDialog::updateVisualizationLegend()
+{
+    const int width = 180;
+    const int height = 14;
+    QImage image(width, height, QImage::Format_ARGB32_Premultiplied);
+    const GafHeatScale scale = GafHeatScale(m_heatScaleComboBox->currentData().toInt());
+    for (int x = 0; x < width; ++x)
+    {
+        const quint64 maximum = 1000;
+        quint64 count;
+        if (scale == GAF_HEAT_LOG)
+            count = qMax<quint64>(1, quint64(std::expm1((double(x) / (width - 1)) *
+                                                       std::log1p(double(maximum)))));
+        else
+            count = qMax<quint64>(1, quint64((double(x) / (width - 1)) * maximum));
+        const QColor colour = gafVisualizationColour(count, maximum, scale);
+        for (int y = 0; y < height; ++y)
+            image.setPixelColor(x, y, colour);
+    }
+    m_visualizationLegendLabel->setPixmap(QPixmap::fromImage(image));
+    m_visualizationLegendLabel->setToolTip("Low support to high support");
+}
+
+
+void GafPathsDialog::markVisualizationOutOfDate()
+{
+    ++m_filterRevision;
+    updateVisualizationControls();
+}
+
+
+void GafPathsDialog::visualizeGaf()
+{
+    if (m_visualizationRunning)
+        return;
+
+    const QList<GafAlignment> alignments = filteredAlignments();
+    const GafCountBasis basis = GafCountBasis(m_countBasisComboBox->currentData().toInt());
+    m_visualizationRunning = true;
+    m_visualizationBuildRevision = m_filterRevision;
+    m_visualizationCancelled.reset(new std::atomic_bool(false));
+    const std::shared_ptr<std::atomic_bool> cancelled = m_visualizationCancelled;
+
+    m_visualizationProgress = new QProgressDialog("Aggregating filtered GAF records...", "Cancel",
+                                                  0, alignments.size(), this);
+    m_visualizationProgress->setWindowTitle("GAF visualization");
+    m_visualizationProgress->setWindowModality(Qt::WindowModal);
+    m_visualizationProgress->setMinimumDuration(250);
+    m_visualizationProgress->setAutoClose(false);
+    connect(m_visualizationProgress, &QProgressDialog::canceled, this, [cancelled]() {
+        cancelled->store(true);
+    });
+    QPointer<QProgressDialog> progressDialog(m_visualizationProgress);
+
+    QFuture<GafVisualizationData> future = QtConcurrent::run(
+                [alignments, basis, cancelled, progressDialog]() {
+        return buildGafVisualization(alignments, basis, cancelled.get(),
+                                     [progressDialog](int done, int) {
+            if (progressDialog)
+                QMetaObject::invokeMethod(progressDialog, "setValue", Qt::QueuedConnection,
+                                          Q_ARG(int, done));
+        });
+    });
+    m_visualizationWatcher->setFuture(future);
+    updateVisualizationControls();
+}
+
+
+void GafPathsDialog::visualizationFinished()
+{
+    const GafVisualizationData data = m_visualizationWatcher->result();
+    m_visualizationRunning = false;
+    if (m_visualizationProgress != 0)
+    {
+        m_visualizationProgress->close();
+        m_visualizationProgress->deleteLater();
+        m_visualizationProgress = 0;
+    }
+
+    if (!data.cancelled)
+    {
+        g_memory->setGafVisualization(data);
+        g_memory->setGafHeatScale(GafHeatScale(m_heatScaleComboBox->currentData().toInt()));
+        m_visualizedFilterRevision = m_visualizationBuildRevision;
+        emit visualizationChanged();
+        emit visualizationRequested();
+    }
+    updateVisualizationControls();
+}
+
+
+void GafPathsDialog::clearVisualization()
+{
+    if (g_memory->clearGafVisualization())
+        emit visualizationChanged();
+    m_visualizedFilterRevision = -1;
+    updateVisualizationControls();
+}
+
+
+void GafPathsDialog::visualizationScaleChanged(int)
+{
+    g_memory->setGafHeatScale(GafHeatScale(m_heatScaleComboBox->currentData().toInt()));
+    updateVisualizationLegend();
+    if (g_memory->gafVisualizationIsVisible())
+    {
+        emit visualizationChanged();
+    }
+}
+
+
+void GafPathsDialog::visualizationBasisChanged(int)
+{
+    updateVisualizationControls();
+}
 
 void GafPathsDialog::onSelectionChanged()
 {
@@ -712,6 +927,7 @@ void GafPathsDialog::applyMapqFilter()
     populateTable();
     showWarnings();
     updateButtons();
+    markVisualizationOutOfDate();
 }
 
 
@@ -733,6 +949,7 @@ void GafPathsDialog::resetFilter()
     populateTable();
     showWarnings();
     updateButtons();
+    markVisualizationOutOfDate();
 }
 
 void GafPathsDialog::updatePaginationControls()

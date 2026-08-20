@@ -22,7 +22,11 @@
 #include <QList>
 #include <QTableView>
 #include <QWidget>
+#include <QFutureWatcher>
+#include <atomic>
+#include <memory>
 #include "../program/gafparser.h"
+#include "../program/gafvisualization.h"
 
 class QLabel;
 class QPushButton;
@@ -31,6 +35,7 @@ class QLineEdit;
 class QComboBox;
 class QLabel;
 class QModelIndex;
+class QProgressDialog;
 
 class GafPathsTableView : public QTableView
 {
@@ -104,6 +109,8 @@ private:
     QPushButton * m_highlightAllButton;
     QPushButton * m_clearHighlightButton;
     QPushButton * m_saveFilteredButton;
+    QPushButton * m_visualizeButton;
+    QPushButton * m_clearVisualizationButton;
     QPushButton * m_filterButton;
     QPushButton * m_resetFilterButton;
     QPushButton * m_prevPageButton;
@@ -112,10 +119,14 @@ private:
     QSpinBox * m_nodeCountFilterSpinBox;
     QLineEdit * m_nodeFilterLineEdit;
     QComboBox * m_nodeFilterModeComboBox;
+    QComboBox * m_countBasisComboBox;
+    QComboBox * m_heatScaleComboBox;
     QSpinBox * m_pageSizeSpinBox;
     QLineEdit * m_pageCurrentLineEdit;
     QLabel * m_pageTotalLabel;
     QLabel * m_warningLabel;
+    QLabel * m_visualizationStatusLabel;
+    QLabel * m_visualizationLegendLabel;
     QList<int> m_visibleRows;
     QList<int> m_visibleRowsBase;
     int m_currentMapqThreshold;
@@ -123,6 +134,13 @@ private:
     QStringList m_nodeFilters;
     int m_nodeFilterMode;
     bool m_queryRangeSorted;
+    int m_filterRevision;
+    int m_visualizedFilterRevision;
+    int m_visualizationBuildRevision;
+    bool m_visualizationRunning;
+    QFutureWatcher<GafVisualizationData> * m_visualizationWatcher;
+    QProgressDialog * m_visualizationProgress;
+    std::shared_ptr<std::atomic_bool> m_visualizationCancelled;
 
     void populateTable();
     void applyMapqFilter();
@@ -131,6 +149,9 @@ private:
     void updatePaginationControls();
     void showWarnings();
     void highlightPathsForAlignments(const QList<int> &alignmentIndices);
+    void markVisualizationOutOfDate();
+    void updateVisualizationControls();
+    void updateVisualizationLegend();
 
 private slots:
     void onSelectionChanged();
@@ -145,11 +166,18 @@ private slots:
     void pageSizeChanged(int value);
     void pageCurrentEdited();
     void handleHeaderClicked(int section);
+    void visualizeGaf();
+    void clearVisualization();
+    void visualizationFinished();
+    void visualizationScaleChanged(int index);
+    void visualizationBasisChanged(int index);
 
 signals:
     void selectionChanged();
     void highlightRequested();
     void clearHighlightRequested();
+    void visualizationChanged();
+    void visualizationRequested();
 
 protected:
     void hideEvent(QHideEvent * event) override;

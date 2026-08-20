@@ -177,6 +177,26 @@ void GraphicsItemNode::paint(QPainter * painter, const QStyleOptionGraphicsItem 
         painter->setClipping(false);
     }
 
+    quint64 gafSupport = 0;
+    if (g_memory->gafVisualizationIsVisible())
+    {
+        const GafVisualizationData &visualization = g_memory->gafVisualization();
+        gafSupport = visualization.nodeCount(m_deBruijnNode, g_settings->doubleMode);
+        if (gafSupport > 0)
+        {
+            const QColor heatColour = gafVisualizationColour(
+                        gafSupport, visualization.maximum(g_settings->doubleMode),
+                        g_memory->gafHeatScale(), 170);
+            painter->fillPath(outlinePath, QBrush(heatColour));
+            setToolTip(QString("GAF support: %1 %2")
+                       .arg(gafSupport).arg(gafCountBasisLabel(visualization.countBasis)));
+        }
+        else
+            setToolTip(QString());
+    }
+    else
+        setToolTip(QString());
+
     drawBedAnnotations(painter, outlinePath);
 
 

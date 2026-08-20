@@ -47,26 +47,19 @@ void InfoTextWidget::setInfoText(QString infoText)
 void InfoTextWidget::paintEvent(QPaintEvent * /*event*/)
 {
     QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
 
-    QPixmap infoIcon;
-    if (isEnabled())
-        infoIcon = QPixmap(":/icons/information-256.png");
-    else
-        infoIcon = QPixmap(":/icons/information-256-inactive.png");
+    const QRectF circleRect(1.0, 1.0, width() - 2.0, height() - 2.0);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor("#1976d2"));
+    painter.drawEllipse(circleRect);
 
-    //This scaling using the device pixel ratio was necessary to make the labels look right on a MacBook retina display.
-    double scaledWidth = width() * devicePixelRatio();
-    double scaledHeight = height() * devicePixelRatio();
-    double scaledSize = std::min(scaledWidth, scaledHeight);
-
-    QPixmap scaledInfoIcon = infoIcon.scaled(scaledSize, scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-
-    scaledInfoIcon.setDevicePixelRatio(devicePixelRatio());
-
-    double topLeftX = scaledWidth / 2.0 - scaledSize / 2.0;
-    double topLeftY = scaledHeight / 2.0 - scaledSize / 2.0;
-
-    painter.drawPixmap(topLeftX, topLeftY, scaledInfoIcon);
+    QFont font = painter.font();
+    font.setBold(true);
+    font.setPixelSize(qRound(height() * 0.9));
+    painter.setFont(font);
+    painter.setPen(Qt::white);
+    painter.drawText(rect(), Qt::AlignCenter, "!");
 }
 
 

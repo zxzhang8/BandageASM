@@ -320,6 +320,16 @@ std::vector<Bound> visitBounds(const TangleGraph &graph, int sourceSegment,
     return result;
 }
 
+double singleCopyCoverage(const TanglePathSearchRequest &request,
+                          int sourceSegment, int targetSegment)
+{
+    if (request.parameters.cpSingleCopyCoverage > 0.0)
+        return request.parameters.cpSingleCopyCoverage;
+    return median(std::vector<double>{
+                      request.graph.segments[sourceSegment].coverage,
+                      request.graph.segments[targetSegment].coverage});
+}
+
 std::vector<double> coverageTable(const TangleSegment &segment, double medianLength,
                                   int maximum, double singleCopy,
                                   const TanglePathParameters &parameters)
@@ -340,8 +350,7 @@ SolveAttempt buildAndSolve(const TanglePathSearchRequest &request,
 {
     const TangleGraph &graph = request.graph;
     const TanglePathParameters &parameters = request.parameters;
-    const double singleCopy = median(std::vector<double>{graph.segments[sourceSegment].coverage,
-                                                         graph.segments[targetSegment].coverage});
+    const double singleCopy = singleCopyCoverage(request, sourceSegment, targetSegment);
     const std::vector<Bound> bounds = visitBounds(graph, sourceSegment, targetSegment,
                                                   singleCopy, parameters, strict);
     int maxPositions = 2;
@@ -602,9 +611,7 @@ double comparablePathObjective(const TanglePathSearchRequest &request,
 {
     const TangleGraph &graph = request.graph;
     const TanglePathParameters &parameters = request.parameters;
-    const double singleCopy = median(std::vector<double>{
-                                         graph.segments[sourceSegment].coverage,
-                                         graph.segments[targetSegment].coverage});
+    const double singleCopy = singleCopyCoverage(request, sourceSegment, targetSegment);
     const std::vector<Bound> bounds = visitBounds(graph, sourceSegment,
                                                   targetSegment, singleCopy,
                                                   parameters, false);
