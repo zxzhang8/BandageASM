@@ -10,7 +10,7 @@ BandageASM is a fork of original Bandage repo It draws contigs as nodes with the
 - **Selected-edge Gen Seq**: when edges are selected, a **Gen Seq** button appears to validate that they form one unambiguous path; errors report branching/disconnected nodes. For valid paths, a tab shows the ordered walk with exports:
   - **FASTA** if all nodes have sequence.
   - **GAF** always available to record the walk.
-- **Selected-node path search**: from the Selection panel you can find paths that connect two chosen nodes within the selected-node set, inspect results in a tab, select paths on the graph using the standard graph-selection style, and export a single path to FASTA. In addition to the original search, a coverage-only **Beam search** accepts any numeric GFA segment tag (defaulting to `rd` when available), while read-aware **CP-SAT** uses either all loaded GAF alignments or the complete current filtered result set. Both run in the background and can be cancelled. CP-SAT also provides an **Advanced configure** tab for evidence filtering, coverage fitting, objective weights, context lengths, and the solver seed.
+- **Selected-node path search**: from the Selection panel you can find paths that connect two chosen nodes within the selected-node set, inspect results in a tab, select paths on the graph using the standard graph-selection style, and export a single path to FASTA. In addition to the original search, a coverage-only **Beam search** accepts any numeric GFA segment tag (defaulting to `rd` when available), while read- and coverage-aware path optimization (**RCAP**) uses either all loaded GAF alignments or the complete current filtered result set. Both run in the background and can be cancelled. RCAP also provides an **Advanced configure** tab for evidence filtering, coverage fitting, base objective weights, context lengths, and the solver seed.
 - **Node context menu**: right-click a node to show its name, open its sequence in a tab, or set it as the Start/End for selected-node path search.
 - **GFA tag node labels**: optional attributes from GFA segment records can be selected from the Node labels controls and displayed on graph nodes.
 - **Selection mode**: a toggle in "Find paths in selection" keeps current selections when clicking empty space, so you can inspect without accidentally clearing nodes/paths.
@@ -31,13 +31,13 @@ Select the nodes that define the local tangle, choose distinct **Start** and **E
 
 - **Standard** performs the original selected-subgraph path search.
 - **Beam search** uses graph connectivity and a numeric per-node coverage tag. It does not require a GAF file. `rd` is selected automatically when it is available on every selected node.
-- **CP-SAT** combines graph connectivity, node coverage, and read-to-graph alignments. A GAF file must be loaded, and **GAF evidence** can use either all loaded alignments or all alignments remaining after the current GAF filters. Evidence extraction is not limited to the currently displayed GAF page.
+- **RCAP** combines graph connectivity, node coverage, and read-to-graph alignments and solves the resulting model with OR-Tools CP-SAT. A GAF file must be loaded, and **GAF evidence** can use either all loaded alignments or all alignments remaining after the current GAF filters. Evidence extraction is not limited to the currently displayed GAF page.
 
-For CP-SAT, click **Advanced configure** below the algorithm selector to open a separate configuration tab. The formula shown at the top describes the implemented objective and identifies where the configurable parameters are used. Click the blue information icon beside a parameter for a description of its role and the effect of changing it.
+For RCAP, click **Advanced configure** below the algorithm selector to open a separate configuration tab. The formula shown at the top describes the implemented objective and identifies where the configurable parameters are used. Click the blue information icon beside a parameter for a description of its role and the effect of changing it.
 
-The advanced settings include coverage dispersion and Huber loss, the CP-SAT minimum coverage ratio, full-thread and context evidence fractions, minimum and maximum context length, alignment-score retention, coverage/read objective weights, and the CP-SAT random seed. Read evidence is weighted using alignment score, identity, mapping coverage, and mapping ambiguity; repeated context matches are capped by their expected count. **Restore defaults** fills the form with built-in defaults. **Confirm** applies the values, closes the configuration tab, and returns to **Graph & controls**; **Cancel** closes the tab without applying edits. A yellow exclamation mark beside **Advanced configure** indicates that confirmed values differ from the defaults.
+The advanced settings include coverage dispersion and Huber loss, the RCAP minimum coverage ratio, full-thread and context evidence fractions, minimum and maximum context length, alignment-score retention, base coverage/read objective weights, and the CP-SAT solver seed. RCAP dynamically adjusts the two base objective weights from the mean retained-read confidence while preserving their total. Read evidence is weighted using alignment score, identity, mapping coverage, and mapping ambiguity; repeated context matches are capped by their expected count. **Restore defaults** fills the form with built-in defaults. **Confirm** applies the values, closes the configuration tab, and returns to **Graph & controls**; **Cancel** closes the tab without applying edits. A yellow exclamation mark beside **Advanced configure** indicates that confirmed values differ from the defaults.
 
-Beam search and CP-SAT run in a cancellable progress dialog. Successful candidates are opened in **Selected node paths**, where one or more rows can be highlighted without permanently changing the underlying node style. A single selected result can be exported to FASTA.
+Beam search and RCAP run in a cancellable progress dialog. Successful candidates are opened in **Selected node paths**, where one or more rows can be highlighted without permanently changing the underlying node style. A single selected result can be exported to FASTA.
 
 ## Why it helps genome assembly work
 - Map multiple assemblies or reference genome onto the assembly graph to guide the consensus generation.
@@ -47,7 +47,7 @@ For the full original documentation and releases, please see the original Bandag
 
 ## Build dependency
 
-The main application requires the OR-Tools C++ distribution for the CP-SAT path finder. Set `ORTOOLS_ROOT` to a matching installation before running qmake; the directory must contain `include/` and `lib/`:
+The main application requires the OR-Tools C++ distribution for the RCAP path finder's CP-SAT solver. Set `ORTOOLS_ROOT` to a matching installation before running qmake; the directory must contain `include/` and `lib/`:
 
 ```sh
 qmake Bandage.pro ORTOOLS_ROOT=/path/to/or-tools

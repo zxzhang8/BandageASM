@@ -17,7 +17,7 @@ class DeBruijnNode;
 enum TanglePathAlgorithm
 {
     TANGLE_PATH_BEAM_SEARCH,
-    TANGLE_PATH_CP_SAT
+    TANGLE_PATH_RCAP
 };
 
 struct TangleSegment
@@ -130,6 +130,9 @@ struct TanglePathSearchResult
     QString errorMessage;
     bool cancelled;
     bool relaxedCoverage;
+    double evidenceQuality;
+    double effectiveCoverageWeight;
+    double effectiveReadWeight;
     qint64 elapsedMs;
 
     TanglePathSearchResult();
@@ -151,8 +154,8 @@ QVector<TangleReadAlignment> extractTangleReadAlignments(
 TanglePathSearchResult runBeamTanglePathSearch(const TanglePathSearchRequest &request,
                                                std::atomic_bool *cancelled = 0);
 
-TanglePathSearchResult runCpSatTanglePathSearch(const TanglePathSearchRequest &request,
-                                                std::atomic_bool *cancelled = 0);
+TanglePathSearchResult runRcapTanglePathSearch(const TanglePathSearchRequest &request,
+                                              std::atomic_bool *cancelled = 0);
 
 Q_DECLARE_METATYPE(TanglePathSearchResult)
 

@@ -40,14 +40,14 @@ CpSatAdvancedConfigWidget::CpSatAdvancedConfigWidget(
     m_randomSeed(new QSpinBox(this))
 {
     QVBoxLayout *outerLayout = new QVBoxLayout(this);
-    QLabel *title = new QLabel("CP-SAT advanced configuration", this);
+    QLabel *title = new QLabel("RCAP advanced configuration", this);
     QFont titleFont = title->font();
     titleFont.setBold(true);
     title->setFont(titleFont);
     outerLayout->addWidget(title);
 
     QLabel *description = new QLabel(
-                "These settings affect CP-SAT evidence filtering and objective scoring. "
+                "These settings affect RCAP evidence filtering and objective scoring. "
                 "Changes are applied only after you click Confirm.", this);
     description->setWordWrap(true);
     outerLayout->addWidget(description);
@@ -57,16 +57,23 @@ CpSatAdvancedConfigWidget::CpSatAdvancedConfigWidget(
     formula->setWordWrap(true);
     formula->setTextInteractionFlags(Qt::TextSelectableByMouse);
     formula->setText(
-                "<b>Objective minimized by CP-SAT</b><br>"
-                "J(P) = w<sub>cov</sub> &Sigma;<sub>i</sub> l<sub>i</sub> "
+                "<b>Objective minimized by RCAP using CP-SAT</b><br>"
+                "J(P) = w'<sub>cov</sub> &Sigma;<sub>i</sub> l<sub>i</sub> "
                 "H<sub>&delta;</sub>((c<sub>i</sub> - n<sub>i</sub>c<sub>1</sub>) / "
-                "(&rho;c<sub>1</sub>)) + w<sub>read</sub> &Sigma;<sub>r</sub> q<sub>r</sub> "
+                "(&rho;c<sub>1</sub>)) + w'<sub>read</sub> &Sigma;<sub>r</sub> q<sub>r</sub> "
                 "[1 - &alpha;I<sub>full,r</sub>(P) - &beta;&Sigma;<sub>k</sub> "
                 "f<sub>rk</sub>I<sub>context,rk</sub>(P)] + &epsilon;(|P|-1)<br>"
+                "<small>q&#772; = mean<sub>r</sub>(q<sub>r</sub>), "
+                "f<sub>read</sub> = clamp(w<sub>read</sub> / (w<sub>cov</sub> + "
+                "w<sub>read</sub>) + 0.375(q&#772; - 0.5), 0.1, 0.9), "
+                "w'<sub>read</sub> = (w<sub>cov</sub> + w<sub>read</sub>)f<sub>read</sub>, "
+                "w'<sub>cov</sub> = w<sub>cov</sub> + w<sub>read</sub> - w'<sub>read</sub>.</small><br>"
                 "<small>c<sub>1</sub> = single-copy coverage, "
                 "&rho; = coverage dispersion, &delta; = coverage Huber delta, "
                 "&alpha; = full-thread fraction, &beta; = context fraction, "
-                "w<sub>cov</sub> = coverage weight, and w<sub>read</sub> = read evidence weight. "
+                "The configured base weights w<sub>cov</sub> and w<sub>read</sub> are adjusted "
+                "to effective weights w'<sub>cov</sub> and w'<sub>read</sub> from the mean retained-read "
+                "confidence while preserving their total. "
                 "Contexts use lengths [context min, context max]; evidence is weighted by "
                 "AS, identity, and mapping ambiguity; matching rewards are capped by expected "
                 "pattern counts.</small>");
@@ -94,9 +101,9 @@ CpSatAdvancedConfigWidget::CpSatAdvancedConfigWidget(
                  "Sets the transition point &delta; of the Huber loss H<sub>&delta;</sub> used "
                  "for coverage residuals. Residuals below this point are quadratic; larger "
                  "residuals are penalized linearly.");
-    addParameter("CP-SAT minimum coverage ratio (τ):", m_tauMin,
+    addParameter("RCAP minimum coverage ratio (τ):", m_tauMin,
                  "Sets the minimum expected fraction of single-copy coverage used to derive "
-                 "CP-SAT node visit bounds. This parameter is specific to CP-SAT and does "
+                 "RCAP node visit bounds. This parameter is specific to RCAP and does "
                  "not change Beam search.");
     addParameter("Full-thread fraction (α):", m_fullThreadFraction,
                  "Sets &alpha;, the reward assigned when the candidate path contains a retained "
@@ -115,15 +122,15 @@ CpSatAdvancedConfigWidget::CpSatAdvancedConfigWidget(
     addParameter("Alignment-score fraction (f<sub>AS</sub>):", m_alignmentScoreFraction,
                  "After keeping alignments with the best mapping quality, retain alternatives "
                  "whose alignment score is at least f<sub>AS</sub> times the best score for that read.");
-    addParameter("Coverage weight (w<sub>cov</sub>):", m_coverageWeight,
-                 "Multiplier w<sub>cov</sub> for the coverage-fit term in the objective. Increase "
-                 "it to favor paths whose node copy counts better match coverage.");
-    addParameter("Read evidence weight (w<sub>read</sub>):", m_readWeight,
-                 "Multiplier w<sub>read</sub> for full-thread and context evidence. Increase it "
-                 "to make read support more influential relative to coverage fit.");
+    addParameter("Base coverage weight (w<sub>cov</sub>):", m_coverageWeight,
+                 "Base multiplier for coverage fit. RCAP dynamically adjusts it against the read "
+                 "weight using mean retained-read confidence while preserving their total.");
+    addParameter("Base read evidence weight (w<sub>read</sub>):", m_readWeight,
+                 "Base multiplier for full-thread and context evidence. RCAP increases its effective "
+                 "share for higher-quality retained reads and decreases it for lower-quality reads.");
     m_randomSeed->setRange(0, 2147483647);
     addParameter("Random seed:", m_randomSeed,
-                 "Seed passed to the CP-SAT solver. It does not appear in the objective formula, "
+                 "Seed passed to RCAP's CP-SAT solver. It does not appear in the objective formula, "
                  "but controls deterministic solver search choices when alternatives exist.");
     form->setRowStretch(row, 1);
 

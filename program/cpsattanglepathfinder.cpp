@@ -2,8 +2,8 @@
 
 #ifndef BANDAGE_WITH_ORTOOLS
 
-TanglePathSearchResult runCpSatTanglePathSearch(const TanglePathSearchRequest &,
-                                                std::atomic_bool *)
+TanglePathSearchResult runRcapTanglePathSearch(const TanglePathSearchRequest &,
+                                              std::atomic_bool *)
 {
     TanglePathSearchResult result;
     result.status = "ORTOOLS_UNAVAILABLE";
@@ -76,6 +76,13 @@ struct SolveAttempt
         : status(sat::CpSolverStatus::UNKNOWN), objectiveValue(0.0), bestBound(0.0)
     {
     }
+};
+
+struct DynamicWeights
+{
+    double evidenceQuality;
+    double coverageWeight;
+    double readWeight;
 };
 
 double median(std::vector<double> values)
@@ -297,6 +304,25 @@ std::vector<ReadEvidence> buildEvidence(const QVector<TangleReadAlignment> &alig
         evidence.push_back(item);
     }
     return evidence;
+}
+
+DynamicWeights calculateDynamicWeights(const std::vector<ReadEvidence> &evidence,
+                                       const TanglePathParameters &parameters)
+{
+    double evidenceQuality = 0.0;
+    for (size_t i = 0; i < evidence.size(); ++i)
+        evidenceQuality += evidence[i].confidence;
+    evidenceQuality /= evidence.size();
+
+    const double totalWeight = parameters.coverageWeight + parameters.readWeight;
+    if (totalWeight <= 0.0)
+        return {evidenceQuality, 0.0, 0.0};
+
+    const double baseReadFraction = parameters.readWeight / totalWeight;
+    const double readFraction = std::max(0.1, std::min(0.9,
+            baseReadFraction + 0.375 * (evidenceQuality - 0.5)));
+    const double readWeight = totalWeight * readFraction;
+    return {evidenceQuality, totalWeight - readWeight, readWeight};
 }
 
 std::vector<Bound> visitBounds(const TangleGraph &graph, int sourceSegment,
@@ -645,13 +671,13 @@ double comparablePathObjective(const TanglePathSearchRequest &request,
 }
 }
 
-TanglePathSearchResult runCpSatTanglePathSearch(const TanglePathSearchRequest &request,
-                                                std::atomic_bool *cancelled)
+TanglePathSearchResult runRcapTanglePathSearch(const TanglePathSearchRequest &request,
+                                              std::atomic_bool *cancelled)
 {
     QElapsedTimer timer;
     timer.start();
     TanglePathSearchResult result;
-    result.status = "CP_SAT";
+    result.status = "RCAP";
     if (!request.graph.segmentIndex.contains(request.source) ||
         !request.graph.segmentIndex.contains(request.target))
     {
@@ -681,12 +707,21 @@ TanglePathSearchResult runCpSatTanglePathSearch(const TanglePathSearchRequest &r
         return result;
     }
 
-    SolveAttempt attempt = buildAndSolve(request, evidence, sourceSegment, targetSegment,
+    const DynamicWeights dynamicWeights = calculateDynamicWeights(evidence,
+                                                                   request.parameters);
+    result.evidenceQuality = dynamicWeights.evidenceQuality;
+    result.effectiveCoverageWeight = dynamicWeights.coverageWeight;
+    result.effectiveReadWeight = dynamicWeights.readWeight;
+    TanglePathSearchRequest effectiveRequest = request;
+    effectiveRequest.parameters.coverageWeight = dynamicWeights.coverageWeight;
+    effectiveRequest.parameters.readWeight = dynamicWeights.readWeight;
+
+    SolveAttempt attempt = buildAndSolve(effectiveRequest, evidence, sourceSegment, targetSegment,
                                          true, cancelled);
     if (attempt.status == sat::CpSolverStatus::INFEASIBLE)
     {
         result.relaxedCoverage = true;
-        attempt = buildAndSolve(request, evidence, sourceSegment, targetSegment,
+        attempt = buildAndSolve(effectiveRequest, evidence, sourceSegment, targetSegment,
                                 false, cancelled);
     }
     if (cancelled != 0 && cancelled->load())
@@ -700,7 +735,7 @@ TanglePathSearchResult runCpSatTanglePathSearch(const TanglePathSearchRequest &r
         attempt.status != sat::CpSolverStatus::FEASIBLE)
     {
         result.status = QString::fromStdString(sat::CpSolverStatus_Name(attempt.status));
-        result.errorMessage = "CP-SAT returned " + result.status + ".";
+        result.errorMessage = "The RCAP CP-SAT solver returned " + result.status + ".";
         result.elapsedMs = timer.elapsed();
         return result;
     }
@@ -708,7 +743,7 @@ TanglePathSearchResult runCpSatTanglePathSearch(const TanglePathSearchRequest &r
     TanglePathCandidate candidate;
     for (size_t i = 0; i < attempt.path.size(); ++i)
         candidate.orientedNodeNames << request.graph.label(attempt.path[i]);
-    candidate.score = comparablePathObjective(request, evidence, attempt.path,
+    candidate.score = comparablePathObjective(effectiveRequest, evidence, attempt.path,
                                                sourceSegment, targetSegment,
                                                &candidate.weightedReadSupport);
     candidate.coverageMad = std::numeric_limits<double>::quiet_NaN();

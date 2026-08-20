@@ -2248,7 +2248,7 @@
              </item>
              <item>
               <property name="text">
-               <string>CP-SAT</string>
+               <string>RCAP</string>
               </property>
              </item>
             </widget>
@@ -2439,7 +2439,7 @@
                 <property name="font"><font><pointsize>14</pointsize><bold>true</bold></font></property>
                 <property name="styleSheet"><string notr="true">color: #d6a000;</string></property>
                 <property name="text"><string>!</string></property>
-                <property name="toolTip"><string>CP-SAT is using non-default parameters.</string></property>
+                <property name="toolTip"><string>RCAP is using non-default parameters.</string></property>
                </widget>
               </item>
               <item>

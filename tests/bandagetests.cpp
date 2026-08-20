@@ -39,6 +39,7 @@
 #include <QSpinBox>
 #include <QTextStream>
 #include <QTimer>
+#include <algorithm>
 #include "bandagetests.h"
 #include "../ogdf/basic/Graph.h"
 #include "../ogdf/basic/GraphAttributes.h"
@@ -1264,19 +1265,38 @@ void BandageTests::tangleBeamSearchAndGafClipping()
     QCOMPARE(clippedPath, QStringList() << "A+" << "B+" << "D+");
 
 #ifdef BANDAGE_WITH_ORTOOLS
-    request.algorithm = TANGLE_PATH_CP_SAT;
+    request.algorithm = TANGLE_PATH_RCAP;
     request.readAlignments = clipped;
     request.parameters.timeLimitSeconds = 10.0;
-    const TanglePathSearchResult cpResult = runCpSatTanglePathSearch(request);
-    QVERIFY2(cpResult.errorMessage.isEmpty(), qPrintable(cpResult.errorMessage));
-    QCOMPARE(cpResult.candidates.size(), 1);
-    QCOMPARE(cpResult.candidates.first().orientedNodeNames,
+    const TanglePathSearchResult rcapResult = runRcapTanglePathSearch(request);
+    QVERIFY2(rcapResult.errorMessage.isEmpty(), qPrintable(rcapResult.errorMessage));
+    QCOMPARE(rcapResult.candidates.size(), 1);
+    QCOMPARE(rcapResult.candidates.first().orientedNodeNames,
              QStringList() << "A+" << "B+" << "D+");
+    QVERIFY(rcapResult.evidenceQuality > 0.98);
+    const double expectedReadFraction = std::max(0.1, std::min(0.9,
+            0.625 + 0.375 * (rcapResult.evidenceQuality - 0.5)));
+    QVERIFY(qAbs(rcapResult.effectiveReadWeight - 2.0 * expectedReadFraction) < 1e-9);
+    QVERIFY(qAbs(rcapResult.effectiveCoverageWeight +
+                 rcapResult.effectiveReadWeight - 2.0) < 1e-9);
+    QVERIFY(rcapResult.effectiveReadWeight > request.parameters.readWeight);
+    QVERIFY(rcapResult.effectiveCoverageWeight < request.parameters.coverageWeight);
+
+    QVector<TangleReadAlignment> lowQuality = clipped;
+    lowQuality[0].identity = 0.1;
+    lowQuality[0].mappingQuality = 0;
+    request.readAlignments = lowQuality;
+    const TanglePathSearchResult lowQualityResult = runRcapTanglePathSearch(request);
+    QVERIFY2(lowQualityResult.errorMessage.isEmpty(),
+             qPrintable(lowQualityResult.errorMessage));
+    QVERIFY(lowQualityResult.evidenceQuality < 0.01);
+    QVERIFY(lowQualityResult.effectiveReadWeight < request.parameters.readWeight);
+    QVERIFY(lowQualityResult.effectiveCoverageWeight > request.parameters.coverageWeight);
 #endif
 }
 
 
-void BandageTests::cpSatCoverageControlAndStatusHelp()
+void BandageTests::rcapDynamicWeightsCoverageControlAndStatusHelp()
 {
     createGlobals();
     TanglePathParameters parameters;
@@ -1285,7 +1305,7 @@ void BandageTests::cpSatCoverageControlAndStatusHelp()
     QVERIFY(config.findChild<QDoubleSpinBox *>("cpSatSingleCopyCoverage") == 0);
     QVERIFY(config.findChild<QPushButton *>("cpSatSingleCopyCoverageUnlock") == 0);
 
-    SelectedNodesPathsWidget paths(0, QList<Path>(), "CP-SAT",
+    SelectedNodesPathsWidget paths(0, QList<Path>(), "RCAP",
                                    "OPTIMAL_RELAXED_COVERAGE");
     QPushButton *statusHelp = paths.findChild<QPushButton *>("pathSearchStatusHelpButton");
     QVERIFY(statusHelp != 0);
@@ -1316,6 +1336,7 @@ void BandageTests::cpSatCoverageControlAndStatusHelp()
     QComboBox *end = window.findChild<QComboBox *>("selectedNodesPathEndComboBox");
     QVERIFY(algorithm != 0);
     QVERIFY(end != 0);
+    QCOMPARE(algorithm->itemText(2), QString("RCAP"));
     algorithm->setCurrentIndex(2);
     std::vector<DeBruijnNode *> selectedNodes;
     selectedNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes.value("X+"));

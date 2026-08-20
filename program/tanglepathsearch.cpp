@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include "../graph/debruijnedge.h"
 #include "../graph/debruijnnode.h"
 
@@ -61,7 +62,10 @@ TanglePathParameters::TanglePathParameters()
 }
 
 TanglePathSearchResult::TanglePathSearchResult()
-    : cancelled(false), relaxedCoverage(false), elapsedMs(0)
+    : cancelled(false), relaxedCoverage(false),
+      evidenceQuality(std::numeric_limits<double>::quiet_NaN()),
+      effectiveCoverageWeight(std::numeric_limits<double>::quiet_NaN()),
+      effectiveReadWeight(std::numeric_limits<double>::quiet_NaN()), elapsedMs(0)
 {
 }
 

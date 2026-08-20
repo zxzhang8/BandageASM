@@ -42,25 +42,25 @@ namespace
 QString statusExplanation(const QString &status)
 {
     if (status == "OPTIMAL")
-        return "CP-SAT found a valid path and proved that no path has a better objective "
+        return "RCAP found a valid path and proved that no path has a better objective "
                 "value under the current constraints and parameters. Optimal refers to the "
                 "mathematical model; it does not by itself prove biological correctness.";
     if (status == "FEASIBLE")
-        return "CP-SAT found a valid path, but did not prove that it is optimal. This usually "
+        return "RCAP found a valid path, but did not prove that it is optimal. This usually "
                 "means the time limit was reached while a usable solution was available.";
     if (status == "OPTIMAL_RELAXED_COVERAGE")
-        return "The strict model was infeasible. CP-SAT retried after allowing high-coverage "
+        return "The strict model was infeasible. RCAP retried after allowing high-coverage "
                 "internal nodes to be omitted, then found and proved an optimal solution for "
                 "that relaxed model. Coverage still affects copy limits and objective scoring.";
     if (status == "FEASIBLE_RELAXED_COVERAGE")
-        return "The strict model was infeasible. CP-SAT found a valid solution after allowing "
+        return "The strict model was infeasible. RCAP found a valid solution after allowing "
                 "high-coverage internal nodes to be omitted, but did not prove that the relaxed "
                 "solution is optimal.";
     if (status == "INFEASIBLE")
-        return "CP-SAT proved that no path satisfies the hard constraints, including after the "
+        return "RCAP proved that no path satisfies the hard constraints, including after the "
                 "automatic coverage relaxation retry.";
     if (status == "UNKNOWN")
-        return "CP-SAT neither found a valid path nor proved the model infeasible, commonly "
+        return "RCAP neither found a valid path nor proved the model infeasible, commonly "
                 "because the time limit was reached before either conclusion.";
     if (status == "MODEL_INVALID")
         return "OR-Tools rejected the generated mathematical model as invalid. This indicates "
@@ -68,7 +68,7 @@ QString statusExplanation(const QString &status)
     if (status == "CANCELLED")
         return "The search was cancelled before completion.";
     if (status == "ORTOOLS_UNAVAILABLE")
-        return "This Bandage build was compiled without OR-Tools, so CP-SAT is unavailable.";
+        return "This Bandage build was compiled without OR-Tools, so RCAP is unavailable.";
     if (status == "OK")
         return "The selected path-search algorithm completed successfully.";
     if (status == "BEAM_SEARCH")

@@ -209,7 +209,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     m_selectedNodesPathMaxCopyRow = createHelpRow(
                 ui->selectedNodesPathsWidget, ui->selectedNodesPathMaxCopyLabel,
                 ui->selectedNodesPathMaxCopySpinBox,
-                "Limit the number of node copies CP-SAT may assign to a path.");
+                "Limit the number of node copies RCAP may assign to a path.");
     ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathMaxCopyRow, 7, 0, 1, 2);
     m_selectedNodesPathBeamResultsRow = createHelpRow(
                 ui->selectedNodesPathsWidget, ui->selectedNodesPathBeamResultsLabel,
@@ -219,12 +219,12 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     m_selectedNodesPathGafScopeRow = createHelpRow(
                 ui->selectedNodesPathsWidget, ui->selectedNodesPathGafScopeLabel,
                 ui->selectedNodesPathGafScopeComboBox,
-                "Choose whether CP-SAT should use all loaded GAF alignments or only the current filtered set.");
+                "Choose whether RCAP should use all loaded GAF alignments or only the current filtered set.");
     ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathGafScopeRow, 9, 0, 1, 2);
     m_selectedNodesPathTimeLimitRow = createHelpRow(
                 ui->selectedNodesPathsWidget, ui->selectedNodesPathTimeLimitLabel,
                 ui->selectedNodesPathTimeLimitSpinBox,
-                "Solver time budget for CP-SAT.");
+                "Solver time budget for RCAP.");
     ui->gridLayout_selectedNodesPaths->addWidget(m_selectedNodesPathTimeLimitRow, 10, 0, 1, 2);
 
     // Wrap the original central widget into a tab widget so we can add a GAF tab.
@@ -1169,7 +1169,7 @@ void MainWindow::findPathsInSelectedNodes()
 
         TanglePathSearchRequest tangleRequest;
         tangleRequest.algorithm = selectedAlgorithm == 1
-                ? TANGLE_PATH_BEAM_SEARCH : TANGLE_PATH_CP_SAT;
+                ? TANGLE_PATH_BEAM_SEARCH : TANGLE_PATH_RCAP;
         tangleRequest.source = startBase;
         tangleRequest.target = endBase;
         if (selectedAlgorithm == 2)
@@ -1197,7 +1197,7 @@ void MainWindow::findPathsInSelectedNodes()
             if (m_gafPathsWidget == 0)
             {
                 QMessageBox::information(this, "GAF required",
-                                         "Load a read-to-graph GAF file before running CP-SAT.");
+                                         "Load a read-to-graph GAF file before running RCAP.");
                 return;
             }
             const QList<GafAlignment> evidenceSource =
@@ -1212,13 +1212,13 @@ void MainWindow::findPathsInSelectedNodes()
                 QString message = "No usable multi-node GAF path remains after clipping to the selected subgraph.";
                 if (incompleteAlignments > 0)
                     message += "\n\n" + QString::number(incompleteAlignments) +
-                            " alignment(s) lacked the numeric fields required by CP-SAT.";
-                QMessageBox::information(this, "No CP-SAT read evidence", message);
+                            " alignment(s) lacked the numeric fields required by RCAP.";
+                QMessageBox::information(this, "No RCAP read evidence", message);
                 return;
             }
         }
 
-        const QString algorithmName = selectedAlgorithm == 1 ? "Beam search" : "CP-SAT";
+        const QString algorithmName = selectedAlgorithm == 1 ? "Beam search" : "RCAP";
         MyProgressDialog progress(this, "Running " + algorithmName + "...", true,
                                   "Cancel search", "Cancelling search...",
                                   "The search uses only the currently selected subgraph.");
@@ -1588,13 +1588,14 @@ void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode 
     }
     else if (cpSat && m_gafPathsWidget == 0)
     {
-        status = "Load a GAF file before running CP-SAT.";
+        status = "Load a GAF file before running RCAP.";
         prerequisitesMet = false;
     }
     else if (beam)
         status = "Beam search uses the selected subgraph and coverage values only.";
     else if (cpSat)
-        status = "CP-SAT will clip loaded GAF paths to continuous runs inside the selected subgraph.";
+        status = "RCAP will clip loaded GAF paths to continuous runs inside the selected subgraph and "
+                "adapt coverage/read weights to the retained evidence quality.";
     if (cpSat && customCpSatConfig)
         status += " Advanced configuration is active (non-default values).";
     ui->selectedNodesPathStatusLabel->setText(status);
@@ -1709,7 +1710,7 @@ void MainWindow::openCpSatAdvancedConfig()
     updateCpSatSingleCopyCoverage();
     m_cpSatAdvancedConfigWidget = new CpSatAdvancedConfigWidget(
                 m_tabWidget, m_cpSatParameters);
-    m_tabWidget->addTab(m_cpSatAdvancedConfigWidget, "CP-SAT advanced config");
+    m_tabWidget->addTab(m_cpSatAdvancedConfigWidget, "RCAP advanced config");
     connect(m_cpSatAdvancedConfigWidget, &CpSatAdvancedConfigWidget::accepted,
             this, [this](const TanglePathParameters &parameters)
             {
